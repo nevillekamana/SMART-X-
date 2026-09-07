@@ -27,7 +27,7 @@ that hosts the API, so there is only **one process to run**.
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) installed
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) installed
 - Any modern browser (Chrome, Edge, Firefox)
 - No database, Docker, or Node.js required for Part 1
 
@@ -35,7 +35,7 @@ Verify your SDK version:
 
 ```bash
 dotnet --version
-# should print 8.x.x
+# should print 10.x.x
 ```
 
 ---
