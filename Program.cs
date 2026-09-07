@@ -84,6 +84,7 @@ sensors.MapGet("/mac/{mac}", (string mac, TelemetryService svc) =>
 
 // ── Sensor File Attachment Upload ─────────────────────────
 
+// File upload endpoint: antiforgery disabled for multipart uploads
 sensors.MapPost("/{id}/attachments", async (string id, IFormFile file, TelemetryService svc, FileUploadService fsvc) =>
 {
     var sensor = svc.GetSensor(id);
@@ -100,7 +101,7 @@ sensors.MapPost("/{id}/attachments", async (string id, IFormFile file, Telemetry
     {
         return Results.BadRequest(new { error = ex.Message });
     }
-});
+}).DisableAntiforgery();
 
 sensors.MapGet("/{id}/attachments", (string id, TelemetryService svc) =>
 {
