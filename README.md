@@ -1,13 +1,14 @@
-# Smart-X IoT Mesh Ecosystem — Part 1: Data Ingestion & Validation Gateway
+# HustleHub+ (Smart-X) — Sensor Ingestion & Validation Gateway
 
-A .NET 8 ASP.NET Core Minimal API backend with an integrated HTML/JS dashboard for
-ingesting, validating, and visualising simulated IoT telemetry from a distributed
-sensor mesh (temperature, power consumption, actuator states, etc).
+HustleHub+ (Smart-X) is a lightweight ASP.NET Core Minimal API application (migrated
+to .NET 10) with an integrated static HTML/JS dashboard. It ingests, validates and
+stores simulated IoT telemetry from a distributed sensor mesh (temperature, power,
+actuator state) and demonstrates safe file attachment uploads, batch consolidation,
+and recursive deployment validation.
 
-This README covers **Part 1** of the Smart-X PoE (PROG7312 / AAPD7112): the Sensor
-Data Ingestion and Telemetry pillar. The other two pillars (Real-Time Command Stream,
-Network Topology & Mesh Routing) are visible on the startup screen but intentionally
-disabled — they are implemented in later parts of the PoE.
+This repository contains the Part 1 ingestion gateway used for teaching and
+demonstration purposes. Additional pillars (real-time command stream, mesh
+visualization) are intentionally disabled in the UI.
 
 ---
 
@@ -15,7 +16,7 @@ disabled — they are implemented in later parts of the PoE.
 
 | Layer      | Technology |
 |------------|------------|
-| Backend    | ASP.NET Core 8 Minimal APIs |
+| Backend    | ASP.NET Core 10 Minimal APIs |
 | API Docs   | Swashbuckle / Swagger UI |
 | Frontend   | Vanilla HTML5, CSS3, JavaScript (served as static files by the same app) |
 | Storage    | In-memory (Dictionary/List-backed services — no external DB required) |
@@ -35,7 +36,7 @@ Verify your SDK version:
 
 ```bash
 dotnet --version
-# should print 10.x.x
+# should print 10.x.x (e.g. 10.0.400)
 ```
 
 ---
@@ -115,7 +116,7 @@ SmartX/
 
 ---
 
-## Key Technical Concepts Demonstrated
+## Key Technical Concepts Demonstrated (implemented)
 
 - **Generics** — `TelemetryPacket<T>` (constrained to `struct`) wraps `float`,
   `int`, and `bool` sensor values without boxing/unboxing.
@@ -130,6 +131,17 @@ SmartX/
 - **Dynamic Engagement Feature** — A live "pulse" animation plus a proactive
   "Needs attention" panel surface anomalies (stale sensors, capacity breaches)
   without the user having to search for them.
+
+## Security & Validation Highlights
+
+- Server-side category validation (reject telemetry sent to wrong sensor category)
+- Sensor registration validation and duplicate MAC checks
+- Generic telemetry packet storage using strongly-typed interfaces
+- Jagged-array batching with HashSet-based consolidation for performance
+- File upload hardening: extension allow-list, content-type cross-checks, magic-byte
+  signature validation (PNG/JPEG/PDF), filename/path sanitisation
+- Global exception handling — API responses never leak stack traces
+- Numeric sanity checks (NaN, negative power values rejected)
 
 ---
 
@@ -158,7 +170,7 @@ Full request/response schemas are available in Swagger UI once the app is runnin
 
 ---
 
-## Testing the Application
+## Testing the Application (executed)
 
 1. Run `dotnet run` and open the dashboard.
 2. Click **Simulate activity** on the Overview tab to generate sample telemetry.
@@ -175,13 +187,12 @@ Full request/response schemas are available in Swagger UI once the app is runnin
 ## Known Limitations (Part 1 scope)
 
 - Data is stored in-memory only — restarting the app clears all state.
-- Sensor registration currently does not reject duplicate MAC addresses server-side;
-  this is a known gap being addressed as part of ongoing refinement.
-- File uploads are not currently size/type-restricted server-side (client-side
-  `accept` filter only).
+- The project is intended for demonstration and teaching; it is not a production
+  hardened storage service. Use appropriate secure storage for real deployments.
 
 ---
 
 ## Author
 
 Neville Kabamba ST10404539 — PROG7312 PART 1
+
