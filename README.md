@@ -184,6 +184,44 @@ Full request/response schemas are available in Swagger UI once the app is runnin
 
 ---
 
+## Verification test results (summary)
+
+The repository was exercised with a small verification matrix against a running local instance. Results below reflect tests executed during final verification (server on http://localhost:59185).
+
+| Test case | Request | Expected | Result |
+|---|---:|---|---|
+| Valid PDF | POST /api/sensors/{id}/attachments (valid.pdf) | 200 OK, file written | 200 OK — file saved to wwwroot/uploads/{id}/ (valid_*.pdf)
+| Valid PNG (test payload) | POST with valid.png | 200 OK | 400 Bad Request — signature mismatch (test file lacked valid PNG signature)
+| Valid JPG (test payload) | POST with valid.jpg | 200 OK | 400 Bad Request — signature mismatch (test file lacked valid JPEG signature)
+| Invalid signature PNG | POST with invalid_magic.png | reject | 400 Bad Request — signature mismatch
+| MIME mismatch (png with image/jpeg) | POST with overridden MIME | reject | 400 Bad Request — signature check enforced
+
+Notes:
+- Only the PDF test file was accepted and written to disk during the verification run; the image test files included for quick testing did not contain real image headers and were correctly rejected by the magic-byte checks.
+- No unexpected HTTP 500 responses or stack traces were observed for these flows; failures returned controlled 400 responses with safe messages.
+- Deployment endpoints behaved as expected: /api/deployment/tree returned a rendered tree; /api/deployment/validate returned isValid=false with expected errors and warnings; /api/deployment/find/{name} returned matching nodes.
+- Telemetry simulation (/api/telemetry/simulate) produced sample readings and /api/telemetry/latest returned recent entries.
+
+How to reproduce (examples):
+
+```powershell
+# register (if needed)
+curl.exe -X POST "http://localhost:59185/api/sensors/register" -H "Content-Type: application/json" -d '{"id":"sensor-001","macAddress":"AA:BB:CC:DD:EE:01","location":"Test Lab","category":"Environmental"}'
+
+# upload (replace <id> with returned sensor id)
+curl.exe -v -X POST "http://localhost:59185/api/sensors/<id>/attachments" -F "file=@test_files/valid.pdf"
+curl.exe -v -X POST "http://localhost:59185/api/sensors/<id>/attachments" -F "file=@test_files/valid.png"
+```
+
+Artifacts created during verification:
+
+- .copilot/plans/plan-final-verification-and-test-run-plan.md — this verification plan
+- TEST_RESULTS.md — a short machine-readable summary of the run (created in the repo root)
+- scripts/run-upload-tests.ps1 — helper PowerShell script to execute the upload matrix against a sensor id
+
+
+---
+
 ## Known Limitations (Part 1 scope)
 
 - Data is stored in-memory only — restarting the app clears all state.
