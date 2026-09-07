@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART-X Gateway Dashboard</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+    <!-- ═══════════════ STARTUP INTERFACE ═══════════════ -->
+    <div id="startup-screen" class="startup-screen">
+        <div class="logo-area">
+            <canvas id="pulse-canvas" width="200" height="200"></canvas>
+            <h1 class="glow-title">SMART-X</h1>
+            <p class="subtitle">Intelligent Sensor Gateway &amp; Ingestion Platform</p>
+        </div>
+        <div class="pillar-grid">
+            <div class="pillar-card active" onclick="activatePillar('telemetry')">
+                <div class="pillar-icon"></div>
+                <h2>Sensor Data Ingestion &amp; Telemetry</h2>
+                <p>Register sensors, push telemetry, validate deployments, and aggregate data in real time.</p>
+                <span class="badge active">ACTIVE — Part 1</span>
+            </div>
+            <div class="pillar-card disabled">
+                <div class="pillar-icon"></div>
+                <h2>Real-Time Command Stream &amp; History</h2>
+                <p>Issue live commands to actuators and review command history with replay.</p>
+                <span class="badge disabled">DISABLED — Part 2</span>
+            </div>
+            <div class="pillar-card disabled">
+                <div class="pillar-icon"></div>
+                <h2>Network Topology &amp; Mesh Routing</h2>
+                <p>Visualize mesh network topology, routing paths, and node health.</p>
+                <span class="badge disabled">DISABLED — Final PoE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ APP SHELL ═══════════════ -->
+    <div id="app-shell" class="app-shell hidden">
+
+        <!-- ═══════════════ SIDEBAR ═══════════════ -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-name">SMART-X</div>
+                <div class="brand-subtitle">GATEWAY OPERATIONS</div>
+            </div>
+            <button class="back-btn" onclick="showStartup()">◄ Back to platform</button>
+
+            <nav class="side-nav">
+                <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+                <button class="nav-btn" data-tab="sensors" onclick="switchTab('sensors')">Sensors</button>
+                <button class="nav-btn" data-tab="telemetry" onclick="switchTab('telemetry')">Telemetry</button>
+                <button class="nav-btn" data-tab="deployment" onclick="switchTab('deployment')">Deployment</button>
+                <button class="nav-btn" data-tab="operator" onclick="switchTab('operator')">Operator</button>
+                <button class="nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div><span class="status-dot"></span>Gateway online</div>
+                <div class="sync-line" id="sidebar-sync">SYNC —</div>
+            </div>
+        </aside>
+
+        <!-- ═══════════════ MAIN ═══════════════ -->
+        <main class="main">
+
+            <!-- ── Overview ── -->
+            <section id="tab-overview" class="tab-panel active">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Operations</div>
+                        <h1>Gateway overview</h1>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" onclick="simulateTelemetry()">Simulate activity</button>
+                        <button class="btn-primary" onclick="switchTab('sensors')">Register sensor</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="stat-grid" id="overview-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Network status</div>
+                            <div class="stat-value" id="stat-network">—</div>
+                            <div class="stat-sub" id="stat-network-sub">Last sync —</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Sensors reporting</div>
+                            <div class="stat-value" id="stat-sensors">—</div>
+                            <div class="stat-sub" id="stat-sensors-sub">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Telemetry today</div>
+                            <div class="stat-value" id="stat-telemetry">—</div>
+                            <div class="stat-sub good" id="stat-telemetry-sub">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Deployment</div>
+                            <div class="stat-value" id="stat-deployment">—</div>
+                            <div class="stat-sub" id="stat-deployment-sub">—</div>
+                        </div>
+                    </div>
+
+                    <div class="panel-grid">
+                        <div class="card">
+                            <div class="card-head">
+                                <h2>Network activity</h2>
+                                <span class="card-meta" id="session-packets">Current session · 0 packets</span>
+                            </div>
+                            <div class="packets-panel">
+                                <div>
+                                    <div class="packets-title">Receiving packets</div>
+                                    <div class="packets-sub" id="packets-sub">Waiting for activity</div>
+                                </div>
+                                <div class="packets-status" id="packets-status">IDLE</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head">
+                                <h2>Needs attention</h2>
+                                <span class="card-meta" id="attention-count">0 items</span>
+                            </div>
+                            <div class="attention-list" id="attention-list">
+                                <p class="placeholder-text">Nothing needs attention right now.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Latest telemetry</h2>
+                            <span class="card-meta">Updated just now · <a href="#" onclick="switchTab('telemetry');return false;">View all</a></span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Sensor</th><th>Reading</th><th>Type</th><th>Location</th><th>Signal</th><th>Time</th></tr>
+                            </thead>
+                            <tbody id="overview-telemetry-body">
+                                <tr><td colspan="6"><p class="placeholder-text">No telemetry data yet.</p></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-head">
+                            <h2>Recent activity</h2>
+                            <span class="card-meta" id="activity-count">Today · 0 events</span>
+                        </div>
+                        <div class="activity-list" id="activity-list">
+                            <p class="placeholder-text">No recent activity yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Sensors ── -->
+            <section id="tab-sensors" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Registry</div>
+                        <h1>Sensors</h1>
+                        <div class="page-desc">Find, register, and maintain every connected device.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" onclick="exportSensorList()">Export list</button>
+                        <button class="btn-primary" onclick="document.getElementById('mac-address').focus()">Register sensor</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="stat-grid">
+                        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="sensors-total">0</div></div>
+                        <div class="stat-card"><div class="stat-label">Reporting</div><div class="stat-value" id="sensors-reporting" style="color:var(--success)">0</div></div>
+                        <div class="stat-card"><div class="stat-label">Stale</div><div class="stat-value" id="sensors-stale" style="color:var(--warning)">0</div></div>
+                        <div class="stat-card"><div class="stat-label">Never reported</div><div class="stat-value" id="sensors-never" style="color:var(--text-faint)">0</div></div>
+                    </div>
+
+                    <div class="panel-grid">
+                        <div class="card">
+                            <div class="search-row">
+                                <input type="text" id="sensor-search" placeholder="Search MAC, sensor ID, or location" oninput="renderSensorList(registeredSensors)">
+                                <select id="sensor-filter-category" onchange="renderSensorList(registeredSensors)">
+                                    <option value="">All categories</option>
+                                    <option value="Environmental">Environmental</option>
+                                    <option value="PowerConsumption">Power consumption</option>
+                                    <option value="Actuator">Actuator</option>
+                                </select>
+                                <select id="sensor-filter-state" onchange="renderSensorList(registeredSensors)">
+                                    <option value="">All states</option>
+                                    <option value="Reporting">Reporting</option>
+                                    <option value="Stale">Stale</option>
+                                </select>
+                            </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>Sensor</th><th>Category</th><th>Location</th><th>Latest reading</th><th>Signal</th><th>Last seen</th><th>Files</th><th>State</th></tr>
+                                </thead>
+                                <tbody id="sensor-list-body">
+                                    <tr><td colspan="8"><p class="placeholder-text">No sensors registered yet.</p></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="card">
+                            <h2 style="font-size:0.98rem;margin-bottom:0.25rem;">Register a sensor</h2>
+                            <p class="card-desc">Add a device to the gateway registry. You can attach files or push its first reading next.</p>
+                            <form id="sensor-form" onsubmit="registerSensor(event)">
+                                <div class="field">
+                                    <label>MAC address</label>
+                                    <input type="text" id="mac-address" placeholder="A4:78:9C:12:8F:21" required pattern="^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$|^[A-Za-z0-9\-]+$">
+                                </div>
+                                <div class="field">
+                                    <label>Location</label>
+                                    <input type="text" id="sensor-location-text" placeholder="North greenhouse" list="location-options">
+                                    <datalist id="location-options">
+                                        <option value="Room-101"></option>
+                                        <option value="Room-102"></option>
+                                        <option value="Room-201"></option>
+                                        <option value="Room-202"></option>
+                                        <option value="Room-301"></option>
+                                        <option value="Zone-1"></option>
+                                        <option value="Zone-2"></option>
+                                        <option value="SubZone-A1"></option>
+                                        <option value="SubZone-B1"></option>
+                                        <option value="Node-A1"></option>
+                                        <option value="Node-A2"></option>
+                                        <option value="Node-B1"></option>
+                                        <option value="Facility-A"></option>
+                                    </datalist>
+                                </div>
+                                <div class="field">
+                                    <label>Category</label>
+                                    <select id="sensor-category">
+                                        <option value="Environmental">Environmental</option>
+                                        <option value="PowerConsumption">Power consumption</option>
+                                        <option value="Actuator">Actuator / smart switch</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn-primary" style="width:100%">Register sensor</button>
+                            </form>
+                            <div id="sensor-register-result"></div>
+
+                            <div class="card" style="margin-top:1.25rem;background:var(--bg-subtle);">
+                                <h2 style="font-size:0.9rem;margin-bottom:0.5rem;">Attach file to sensor</h2>
+                                <div class="field">
+                                    <label>Select sensor</label>
+                                    <select id="upload-sensor-id">
+                                        <option value="">— Register a sensor first —</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>File (config / photo / log)</label>
+                                    <input type="file" id="sensor-file" accept=".json,.xml,.csv,.log,.txt,.png,.jpg,.jpeg,.pdf">
+                                </div>
+                                <button class="btn-secondary" onclick="uploadFile()" style="width:100%">Upload attachment</button>
+                                <div id="upload-result" class="result-msg"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Telemetry ── -->
+            <section id="tab-telemetry" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Data flow</div>
+                        <h1>Telemetry</h1>
+                        <div class="page-desc">Inspect incoming readings and send a trustworthy test packet.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" onclick="switchTab('history')">History</button>
+                        <button class="btn-primary" onclick="simulateTelemetry()">Simulate telemetry</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="panel-grid">
+                        <div class="card">
+                            <div class="card-head">
+                                <h2>Latest packets</h2>
+                                <span class="card-meta" id="telemetry-count-label">0 readings today</span>
+                            </div>
+                            <div class="search-row">
+                                <input type="text" id="telemetry-search" placeholder="Filter sensor or location" oninput="renderTelemetryFeed(sensorDataCache)">
+                                <select id="telemetry-filter-type" onchange="renderTelemetryFeed(sensorDataCache)">
+                                    <option value="">All types</option>
+                                    <option value="environmental">Environmental</option>
+                                    <option value="power">Power</option>
+                                    <option value="actuator">Actuator</option>
+                                </select>
+                            </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>Sensor</th><th>Reading</th><th>Type</th><th>Location</th><th>Signal</th><th>Received</th></tr>
+                                </thead>
+                                <tbody id="telemetry-feed-body">
+                                    <tr><td colspan="6"><p class="placeholder-text">No telemetry data yet. Push data or simulate.</p></td></tr>
+                                </tbody>
+                            </table>
+                            <div class="chip-row">
+                                <div class="chip">Latest packet<strong id="chip-latest-packet">—</strong></div>
+                                <div class="chip">Active sensors<strong id="chip-active-sensors">0 / 0</strong></div>
+                                <div class="chip">Session activity<strong id="chip-session-activity">Idle</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <h2 style="font-size:0.98rem;margin-bottom:0.25rem;">Push telemetry</h2>
+                            <p class="card-desc">Send an API-compatible test reading to the gateway.</p>
+                            <form id="telemetry-form" onsubmit="pushTelemetry(event)">
+                                <div class="field">
+                                    <label>Sensor ID</label>
+                                    <input type="text" id="tel-sensor-id" placeholder="SIM-1234 or registered ID" required>
+                                </div>
+                                <div class="field">
+                                    <label>Telemetry type</label>
+                                    <select id="tel-type" onchange="updateValueHint()">
+                                        <option value="environmental">Environmental</option>
+                                        <option value="power">Power</option>
+                                        <option value="actuator">Actuator</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Location</label>
+                                    <input type="text" id="tel-location" placeholder="North greenhouse">
+                                </div>
+                                <div class="field">
+                                    <label>Value</label>
+                                    <input type="text" id="tel-value" placeholder="e.g. 23.5 or 1200 or true" required>
+                                    <div class="field-hint" id="tel-value-hint">Environmental readings are recorded in °C</div>
+                                </div>
+                                <div class="field">
+                                    <label>Signal strength</label>
+                                    <input type="number" id="tel-signal" value="-60" min="-120" max="0">
+                                </div>
+                                <button type="submit" class="btn-primary" style="width:100%">Push telemetry</button>
+                            </form>
+                            <div id="telemetry-push-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="card full-width">
+                        <div class="card-head"><h2>Batch and history context</h2></div>
+                        <p class="card-desc">Raw readings are grouped into batches before being transferred into optimised storage.</p>
+                        <div class="chip-row">
+                            <div class="chip">Batches<strong id="chip-batches">0</strong></div>
+                            <div class="chip">Total readings<strong id="chip-total-readings">0</strong></div>
+                            <div class="chip">Storage mapping<strong id="chip-storage-mapping">double[][] → List&lt;double&gt;</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Deployment ── -->
+            <section id="tab-deployment" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Structure</div>
+                        <h1>Deployment</h1>
+                        <div class="page-desc">Understand the hierarchy and verify that it is safe to operate.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-primary" onclick="runValidation()">Run validation</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="panel-grid thirds">
+                        <div class="card">
+                            <div class="card-head"><h2>Gateway hierarchy</h2><span class="card-meta" id="tree-count">—</span></div>
+                            <div class="search-row">
+                                <input type="text" id="find-node-name" placeholder="e.g. North Greenhouse Gateway">
+                                <button class="btn-secondary" onclick="findNode()">Find node</button>
+                            </div>
+                            <div id="deployment-tree" class="tree-list">Loading…</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head"><h2 id="selected-node-name">Selected node</h2></div>
+                            <div id="selected-node-meta" class="card-meta" style="margin-bottom:0.75rem;color:var(--text-dim)"></div>
+                            <div id="selected-node-details">
+                                <p class="placeholder-text">Select a node from the hierarchy.</p>
+                            </div>
+                            <div class="detail-links" id="selected-node-links"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head"><h2>Validation result</h2></div>
+                            <div id="validation-result">
+                                <p class="placeholder-text">Click "Run validation" to recursively validate the deployment tree.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="find-node-result" class="result-msg"></div>
+                </div>
+            </section>
+
+            <!-- ── Operator ── -->
+            <section id="tab-operator" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Analysis</div>
+                        <h1>Operator</h1>
+                        <div class="page-desc">Compare two readings and turn raw telemetry into a clear operational conclusion.</div>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="panel-grid">
+                        <div class="card">
+                            <div class="card-head"><h2>Two-sensor analysis</h2></div>
+                            <p class="card-desc">Choose readings from the latest packet set. Aggregate and delta require compatible units.</p>
+                            <div class="two-sensor-row">
+                                <select id="op-sensor-1"><option value="">— Sensor 1 —</option></select>
+                                <span class="vs-label">vs</span>
+                                <select id="op-sensor-2"><option value="">— Sensor 2 —</option></select>
+                            </div>
+                            <div class="op-choice-row">
+                                <button type="button" class="selected" id="op-choice-add" onclick="selectOperator('add')">Aggregate +</button>
+                                <button type="button" id="op-choice-sub" onclick="selectOperator('sub')">Delta −</button>
+                                <button type="button" id="op-choice-cmp" onclick="selectOperator('cmp')">Compare &gt; / &lt;</button>
+                            </div>
+                            <button class="btn-primary" style="width:100%" onclick="runOperation()">Run operation</button>
+                            <div id="operator-result"></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head"><h2>Choose compatible readings</h2></div>
+                            <p class="card-desc">Use two environmental readings for temperature math, or two power readings for consumption analysis. Actuator states support comparison only.</p>
+                            <div class="card-head" style="margin-top:1rem;"><h2 style="font-size:0.85rem;">Recent operations</h2></div>
+                            <div class="ops-list" id="recent-ops-list">
+                                <p class="placeholder-text">No operations run yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── History ── -->
+            <section id="tab-history" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Data flow</div>
+                        <h1>History</h1>
+                        <div class="page-desc">Full reading history transferred from raw batches into storage.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" onclick="loadHistory()">Refresh</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="chip-row" style="margin-bottom:1.25rem;">
+                        <div class="chip">Batches<strong id="history-chip-batches">0</strong></div>
+                        <div class="chip">Total readings<strong id="history-chip-total">0</strong></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head"><h2>Reading history</h2></div>
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>Value</th></tr></thead>
+                            <tbody id="history-body">
+                                <tr><td colspan="2"><p class="placeholder-text">No history yet.</p></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>
