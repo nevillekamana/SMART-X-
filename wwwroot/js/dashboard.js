@@ -107,6 +107,22 @@ function updateSyncLabel() {
 //  NETWORK ACTIVITY INDICATOR
 // ═══════════════════════════════════════════════
 
+// Simple toast / notification helper
+function showToast(title, body, kind = 'success', ttl = 4000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = `toast ${kind}`;
+    el.innerHTML = `<div class="toast-title">${title}</div><div class="toast-body">${body}</div>`;
+    container.appendChild(el);
+    setTimeout(() => {
+        el.style.transition = 'opacity 0.25s ease';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 250);
+    }, ttl);
+}
+
+
 function triggerPulse() {
     sessionPacketCount++;
     const status = document.getElementById('packets-status');
