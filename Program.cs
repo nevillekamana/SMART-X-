@@ -90,6 +90,8 @@ sensors.MapPost("/{id}/attachments", async (string id, IFormFile file, Telemetry
     var sensor = svc.GetSensor(id);
     if (sensor is null) return Results.NotFound(new { error = "Sensor not found" });
 
+    if (file is null) return Results.BadRequest(new { error = "No file provided in the request" });
+
     try
     {
         using var stream = file.OpenReadStream();
