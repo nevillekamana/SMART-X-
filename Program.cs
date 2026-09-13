@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -29,6 +30,19 @@ builder.Services.AddCors(o => o.AddPolicy("AllowAll", p =>
     p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
 var app = builder.Build();
+
+// ── Global Exception Handler ────────────────────────────
+// Catches unhandled exceptions and returns clean JSON response
+// without exposing stack traces in any environment
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred while processing the request." });
+    });
+});
 
 app.UseCors("AllowAll");
 app.UseSwagger();
@@ -117,51 +131,100 @@ sensors.MapGet("/{id}/attachments", (string id, TelemetryService svc) =>
 // Generic endpoint for pushing typed telemetry data (demonstrates Generics)
 telemetry.MapPost("/push/{type}", async (string type, HttpContext ctx, TelemetryService svc) =>
 {
-    switch (type.ToLower())
+    try
     {
-        case "temperature":
-        case "humidity":
-        case "environmental":
-            var envData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<float>>();
-            if (envData is not null)
-            {
-                envData.SensorCategory = "Environmental";
-                envData.IsValidated = true;
-                svc.StorePacket(envData);
-                // Also add to SensorData store for operator overloading demos
-                svc.AddSensorData(new SensorData(envData.SensorId, "Environmental", envData.Location, envData.Value, "°C"));
-                return Results.Ok(new { message = "Environmental telemetry stored", packet = envData.ToString() });
-            }
-            return Results.BadRequest(new { error = "Invalid environmental telemetry payload" });
+        switch (type.ToLower())
+        {
+            case "temperature":
+            case "humidity":
+            case "environmental":
+                try
+                {
+                    var envData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<float>>();
+                    if (envData is null)
+                        return Results.BadRequest(new { error = "Invalid environmental telemetry payload" });
 
-        case "power":
-        case "powerconsumption":
-            var pwrData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<int>>();
-            if (pwrData is not null)
-            {
-                pwrData.SensorCategory = "PowerConsumption";
-                pwrData.IsValidated = true;
-                svc.StorePacket(pwrData);
-                svc.AddSensorData(new SensorData(pwrData.SensorId, "PowerConsumption", pwrData.Location, pwrData.Value, "W"));
-                return Results.Ok(new { message = "Power telemetry stored", packet = pwrData.ToString() });
-            }
-            return Results.BadRequest(new { error = "Invalid power telemetry payload" });
+                    // Validate sensor exists and category matches
+                    var sensor = svc.ValidateTelemetryType(envData.SensorId, type);
 
-        case "actuator":
-        case "switch":
-            var actData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<bool>>();
-            if (actData is not null)
-            {
-                actData.SensorCategory = "Actuator";
-                actData.IsValidated = true;
-                svc.StorePacket(actData);
-                svc.AddSensorData(new SensorData(actData.SensorId, "Actuator", actData.Location, actData.Value ? 1 : 0, "state"));
-                return Results.Ok(new { message = "Actuator telemetry stored", packet = actData.ToString() });
-            }
-            return Results.BadRequest(new { error = "Invalid actuator telemetry payload" });
+                    // Basic sanity checks for float values: reject NaN/Infinity
+                    if (float.IsNaN(envData.Value) || float.IsInfinity(envData.Value))
+                        return Results.BadRequest(new { error = "Environmental values cannot be NaN or Infinity." });
 
-        default:
-            return Results.BadRequest(new { error = $"Unknown sensor type: {type}. Supported: environmental, power, actuator" });
+                    envData.SensorCategory = "Environmental";
+                    envData.IsValidated = true;
+                    svc.StorePacket(envData);
+                    svc.AddSensorData(new SensorData(envData.SensorId, "Environmental", envData.Location, envData.Value, "°C"));
+                    return Results.Ok(new { message = "Environmental telemetry stored", packet = envData.ToString() });
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { error = "Malformed JSON in request body." });
+                }
+
+            case "power":
+            case "powerconsumption":
+                try
+                {
+                    var pwrData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<int>>();
+                    if (pwrData is null)
+                        return Results.BadRequest(new { error = "Invalid power telemetry payload" });
+
+                    // Validate sensor exists and category matches
+                    var sensor = svc.ValidateTelemetryType(pwrData.SensorId, type);
+
+                    // Basic sanity checks for int values: reject negative power readings
+                    if (pwrData.Value < 0)
+                        return Results.BadRequest(new { error = "Power consumption readings cannot be negative." });
+
+                    pwrData.SensorCategory = "PowerConsumption";
+                    pwrData.IsValidated = true;
+                    svc.StorePacket(pwrData);
+                    svc.AddSensorData(new SensorData(pwrData.SensorId, "PowerConsumption", pwrData.Location, pwrData.Value, "W"));
+                    return Results.Ok(new { message = "Power telemetry stored", packet = pwrData.ToString() });
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { error = "Malformed JSON in request body." });
+                }
+
+            case "actuator":
+            case "switch":
+                try
+                {
+                    var actData = await ctx.Request.ReadFromJsonAsync<TelemetryPacket<bool>>();
+                    if (actData is null)
+                        return Results.BadRequest(new { error = "Invalid actuator telemetry payload" });
+
+                    // Validate sensor exists and category matches
+                    var sensor = svc.ValidateTelemetryType(actData.SensorId, type);
+
+                    actData.SensorCategory = "Actuator";
+                    actData.IsValidated = true;
+                    svc.StorePacket(actData);
+                    svc.AddSensorData(new SensorData(actData.SensorId, "Actuator", actData.Location, actData.Value ? 1 : 0, "state"));
+                    return Results.Ok(new { message = "Actuator telemetry stored", packet = actData.ToString() });
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { error = "Malformed JSON in request body." });
+                }
+
+            default:
+                return Results.BadRequest(new { error = $"Unknown sensor type: {type}. Supported: environmental, power, actuator" });
+        }
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
     }
 });
 
@@ -192,6 +255,10 @@ telemetry.MapPost("/aggregate", (AggregateRequest req, TelemetryService svc) =>
         var result = svc.AggregateSensors(req.SensorId1, req.SensorId2);
         return Results.Ok(new { message = "Aggregated using operator +", result = result.ToString() });
     }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
     catch (KeyNotFoundException ex)
     {
         return Results.NotFound(new { error = ex.Message });
@@ -208,6 +275,10 @@ telemetry.MapPost("/delta", (AggregateRequest req, TelemetryService svc) =>
     {
         var result = svc.DeltaSensors(req.SensorId1, req.SensorId2);
         return Results.Ok(new { message = "Delta using operator -", result = result.ToString() });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
     }
     catch (KeyNotFoundException ex)
     {
@@ -226,10 +297,31 @@ telemetry.MapPost("/compare", (AggregateRequest req, TelemetryService svc) =>
         var result = svc.CompareSensors(req.SensorId1, req.SensorId2);
         return Results.Ok(new { message = "Compared using operators > <", result });
     }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
     catch (KeyNotFoundException ex)
     {
         return Results.NotFound(new { error = ex.Message });
     }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// ── Telemetry Consolidation with Deduplication ─────────
+
+telemetry.MapGet("/consolidate", (TelemetryService svc) =>
+{
+    var consolidated = svc.ConsolidateAllBatches();
+    return Results.Ok(new
+    {
+        message = "Consolidated telemetry with deduplication",
+        uniqueValueCount = consolidated.Count,
+        values = consolidated
+    });
 });
 
 // ── Simulation ─────────────────────────────────────────
