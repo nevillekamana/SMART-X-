@@ -16,15 +16,21 @@ public class SensorData : IComparable<SensorData>
     public string Unit { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
+    // Carried over from the originating TelemetryPacket<T> so that downstream
+    // consumers (e.g. the Needs Attention weak-signal check) have access to it
+    // without needing to look the packet back up separately.
+    public double? SignalStrength { get; set; }
+
     public SensorData() { }
 
-    public SensorData(string id, string category, string location, double value, string unit)
+    public SensorData(string id, string category, string location, double value, string unit, double? signalStrength = null)
     {
         SensorId = id;
         Category = category;
         Location = location;
         Value = value;
         Unit = unit;
+        SignalStrength = signalStrength;
     }
 
     // ─── Operator Overloading: + (Aggregation) ───

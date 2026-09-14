@@ -8,10 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include=".copilot\plans\plan-final-verification-and-test-run-plan.md" />
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- Updated for .NET 10 compatibility -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.0.0" />
   </ItemGroup>
