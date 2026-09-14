@@ -1,3 +1,4 @@
+# PROG7312 – Part 1 
 # Smart-X – Sensor Ingestion and Validation Gateway
 
 Smart-X is a small ASP.NET Core Minimal API project that I developed for Part 1 of PROG7312. The project was moved to .NET 10 and includes a simple HTML, CSS and JavaScript dashboard.
@@ -355,7 +356,9 @@ There are a few limitations with the current version:
 - There is no external database in this Part 1 version.
 - The application is mainly intended for the assignment/demo and is not a production-ready storage system.
 - The real-time command stream and mesh visualisation are not enabled in this version.
+- The dashboard is simple and does not have advanced features such as filterin
 
+## VIDEO LINK
 ---
 
 ## Author
