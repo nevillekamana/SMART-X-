@@ -36,6 +36,23 @@ public class TelemetryService
     private readonly List<SensorRegistration> _sensors = new();
     private readonly Dictionary<string, SensorData> _latestData = new();
 
+    // O(1) sensor lookup by either MAC address or generated Id, so GetSensor /
+    // GetSensorByMac / ValidateTelemetryType / GetNeedsAttention don't have to
+    // scan the full sensor list on every telemetry push.
+    private readonly Dictionary<string, SensorRegistration> _sensorsByKey = new(StringComparer.OrdinalIgnoreCase);
+
+    // Default capacity/power-spike thresholds applied at registration time when
+    // a sensor doesn't specify its own CapacityThreshold. Only categories with a
+    // meaningful upper bound get a default; Actuator states are excluded.
+    private static readonly Dictionary<string, double> DefaultCapacityThresholds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "PowerConsumption", 4000 }, // W — smart-meter power-spike threshold
+        { "Environmental", 45 }       // °C — over-temperature threshold
+    };
+
+    private const double WeakSignalThresholdDbm = -75;
+    private static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(15);
+
     // Operator-overloaded sensor data store
     private readonly List<SensorData> _sensorDataStore = new();
 
@@ -121,20 +138,33 @@ public class TelemetryService
         if (!validCategories.Contains(reg.Category, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException($"Category must be one of: {string.Join(", ", validCategories)}.");
 
-        if (_sensors.Any(s => string.Equals(s.MacAddress, reg.MacAddress, StringComparison.OrdinalIgnoreCase)))
+        if (_sensorsByKey.ContainsKey(reg.MacAddress))
             throw new InvalidOperationException($"A sensor with MAC address '{reg.MacAddress}' is already registered.");
 
         reg.Id = Guid.NewGuid().ToString();
         reg.RegisteredAt = DateTime.UtcNow;
+
+        // Assign a category-default capacity threshold if the caller didn't set one,
+        // so the Needs Attention panel has something to compare readings against.
+        if (!reg.CapacityThreshold.HasValue && DefaultCapacityThresholds.TryGetValue(reg.Category, out var defaultThreshold))
+            reg.CapacityThreshold = defaultThreshold;
+
         _sensors.Add(reg);
+
+        // Index by both MAC and generated Id for O(1) lookups elsewhere.
+        _sensorsByKey[reg.MacAddress] = reg;
+        _sensorsByKey[reg.Id] = reg;
+
         return reg;
     }
 
     public List<SensorRegistration> GetAllSensors() => _sensors.ToList();
 
-    public SensorRegistration? GetSensor(string id) => _sensors.FirstOrDefault(s => s.Id == id);
+    // O(1) — Dictionary<string, SensorRegistration> lookup instead of a linear scan.
+    public SensorRegistration? GetSensor(string id) => _sensorsByKey.TryGetValue(id, out var s) ? s : null;
 
-    public SensorRegistration? GetSensorByMac(string mac) => _sensors.FirstOrDefault(s => s.MacAddress == mac);
+    // O(1) — same backing dictionary, since MAC and Id are both indexed into it.
+    public SensorRegistration? GetSensorByMac(string mac) => _sensorsByKey.TryGetValue(mac, out var s) ? s : null;
 
     // ─── Validate Telemetry Type Against Registered Sensor ───
     /// <summary>
@@ -252,6 +282,66 @@ public class TelemetryService
         if (a > b) return $"{a.SensorId} ({a.Value}) > {b.SensorId} ({b.Value})";
         if (a < b) return $"{a.SensorId} ({a.Value}) < {b.SensorId} ({b.Value})";
         return $"{a.SensorId} ({a.Value}) == {b.SensorId} ({b.Value})";
+    }
+
+    // ─── Server-side Needs Attention computation (proactive alert prioritisation) ───
+    // Runs entirely against O(1) dictionary lookups (_latestData, _sensorsByKey) —
+    // no linear scan of telemetry history is required per sensor.
+    public List<AttentionItem> GetNeedsAttention()
+    {
+        var items = new List<AttentionItem>();
+        var now = DateTime.UtcNow;
+
+        foreach (var sensor in _sensors)
+        {
+            var key = string.IsNullOrEmpty(sensor.MacAddress) ? sensor.Id : sensor.MacAddress;
+
+            // O(1) dictionary lookup for this sensor's latest reading.
+            if (!_latestData.TryGetValue(key, out var last))
+                continue; // never reported — nothing to evaluate yet
+
+            var age = now - last.Timestamp;
+
+            if (age > StaleThreshold)
+            {
+                items.Add(new AttentionItem
+                {
+                    SensorId = key,
+                    Title = $"{key} has gone quiet",
+                    Description = $"No reading for {(int)age.TotalMinutes} minutes · {sensor.Location}",
+                    Tag = "Stale",
+                    Severity = "warn"
+                });
+            }
+
+            if (last.SignalStrength.HasValue && last.SignalStrength.Value < WeakSignalThresholdDbm)
+            {
+                items.Add(new AttentionItem
+                {
+                    SensorId = key,
+                    Title = "Weak signal detected",
+                    Description = $"{key} at {last.SignalStrength} dBm",
+                    Tag = "WeakSignal",
+                    Severity = "warn"
+                });
+            }
+
+            if (sensor.CapacityThreshold.HasValue && last.Value > sensor.CapacityThreshold.Value)
+            {
+                var isPower = string.Equals(sensor.Category, "PowerConsumption", StringComparison.OrdinalIgnoreCase);
+                items.Add(new AttentionItem
+                {
+                    SensorId = key,
+                    Title = isPower ? "Power spike detected" : "Capacity breach",
+                    Description = $"{key} reading {last.Value}{last.Unit} exceeds configured limit of {sensor.CapacityThreshold}{last.Unit}",
+                    Tag = "CapacityBreach",
+                    Severity = "critical"
+                });
+            }
+        }
+
+        // Critical conditions (capacity/power-spike breaches) surface ahead of routine warnings.
+        return items.OrderBy(i => i.Severity == "critical" ? 0 : 1).ToList();
     }
 
     // ─── Get telemetry history (from consolidated List<T>) ───

@@ -7,6 +7,10 @@ const API_BASE = '/api';
 // ─── State ───
 let registeredSensors = [];
 let sensorDataCache = [];
+// O(1) sensorId -> latest reading, rebuilt every time sensorDataCache refreshes.
+// Replaces the old Array.find() linear scan used by sensorState()/renderOverviewAttention().
+let sensorDataMap = new Map();
+let needsAttentionItems = [];
 let deploymentNodesById = {};
 let selectedNodeId = null;
 let selectedOperator = 'add';
@@ -95,6 +99,7 @@ function switchTab(tabName) {
 function init() {
     updateSyncLabel();
     setInterval(updateSyncLabel, 30000);
+    startNeedsAttentionPolling();
 }
 document.addEventListener('DOMContentLoaded', init);
 
@@ -150,7 +155,8 @@ async function loadOverview() {
     await Promise.all([loadSensorsQuiet(), loadTelemetryQuiet()]);
     renderOverviewStats();
     renderOverviewTelemetry();
-    renderOverviewAttention();
+    renderOverviewAttention(); // renders whatever the last poll returned immediately
+    loadNeedsAttention();      // then refreshes from the server right away too
     renderOverviewActivity();
 }
 
@@ -202,34 +208,25 @@ function renderOverviewTelemetry() {
     `).join('');
 }
 
+// Needs Attention is now computed server-side (TelemetryService.GetNeedsAttention)
+// against O(1) dictionary lookups, and refreshed here on a fixed polling interval
+// (see startNeedsAttentionPolling) rather than recomputed client-side per render.
+async function loadNeedsAttention() {
+    try {
+        const res = await fetch(`${API_BASE}/telemetry/needs-attention`);
+        needsAttentionItems = await res.json();
+    } catch {
+        // Ignore — keep showing the last known items rather than clearing them
+    }
+    renderOverviewAttention();
+}
+
 function renderOverviewAttention() {
     const list = document.getElementById('attention-list');
     const countLabel = document.getElementById('attention-count');
     if (!list) return;
 
-    const items = [];
-    const staleThreshold = 15 * 60 * 1000;
-    registeredSensors.forEach(s => {
-        const last = sensorDataCache.find(d => d.sensorId === (s.macAddress || s.id));
-        if (!last) return;
-        const age = Date.now() - new Date(last.timestamp).getTime();
-        if (age > staleThreshold) {
-            items.push({
-                title: `${s.macAddress || s.id} has gone quiet`,
-                desc: `No reading for ${Math.round(age / 60000)} minutes · ${s.location}`,
-                tag: 'Stale',
-                cls: 'warn'
-            });
-        }
-        if (typeof last.signalStrength === 'number' && last.signalStrength < -75) {
-            items.push({
-                title: 'Weak signal detected',
-                desc: `${s.macAddress || s.id} at ${last.signalStrength} dBm`,
-                tag: '',
-                cls: 'warn'
-            });
-        }
-    });
+    const items = needsAttentionItems;
 
     if (!items.length) {
         list.innerHTML = '<p class="placeholder-text">Nothing needs attention right now.</p>';
@@ -237,11 +234,20 @@ function renderOverviewAttention() {
         list.innerHTML = items.slice(0, 4).map(it => `
             <div class="attention-item">
                 <div class="row-top"><span class="title">${it.title}</span><span class="tag">${it.tag}</span></div>
-                <div class="desc ${it.cls}">${it.desc}</div>
+                <div class="desc ${it.severity === 'critical' ? 'err' : 'warn'}">${it.description}</div>
             </div>
         `).join('');
     }
     if (countLabel) countLabel.textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
+}
+
+// Real polling loop: the attention panel is refreshed from the server on a fixed
+// interval, independent of tab switches or manual telemetry submission, so a
+// stale sensor or a capacity breach surfaces within one polling cycle.
+const NEEDS_ATTENTION_POLL_MS = 10000;
+function startNeedsAttentionPolling() {
+    loadNeedsAttention();
+    setInterval(loadNeedsAttention, NEEDS_ATTENTION_POLL_MS);
 }
 
 function renderOverviewActivity() {
@@ -327,7 +333,7 @@ async function loadSensorsQuiet() {
 }
 
 function sensorState(s) {
-    const last = sensorDataCache.find(d => d.sensorId === (s.macAddress || s.id));
+    const last = sensorDataMap.get(s.macAddress || s.id);
     if (!last) return 'Never reported';
     const age = Date.now() - new Date(last.timestamp).getTime();
     return age > 15 * 60 * 1000 ? 'Stale' : 'Reporting';
@@ -371,7 +377,7 @@ function renderSensorList(sensors) {
     }
 
     body.innerHTML = filtered.map(s => {
-        const last = sensorDataCache.find(d => d.sensorId === (s.macAddress || s.id));
+        const last = sensorDataMap.get(s.macAddress || s.id);
         const state = sensorState(s);
         const stateCls = state === 'Reporting' ? 'reporting' : (state === 'Stale' ? 'stale' : 'never');
         return `
@@ -524,10 +530,21 @@ async function pushTelemetry(e) {
     }
 }
 
+// Rebuilds the O(1) sensorId -> latest-reading map from the (timestamp-descending)
+// telemetry array. Only the first occurrence of a sensorId is kept, since the
+// array is already ordered most-recent-first.
+function rebuildSensorDataMap() {
+    sensorDataMap = new Map();
+    for (const d of sensorDataCache) {
+        if (!sensorDataMap.has(d.sensorId)) sensorDataMap.set(d.sensorId, d);
+    }
+}
+
 async function loadTelemetryFeed() {
     try {
         const res = await fetch(`${API_BASE}/telemetry/latest`);
         sensorDataCache = await res.json();
+        rebuildSensorDataMap();
         renderTelemetryFeed(sensorDataCache);
         refreshOperatorDropdowns();
         renderOverviewStats();
@@ -540,6 +557,7 @@ async function loadTelemetryQuiet() {
     try {
         const res = await fetch(`${API_BASE}/telemetry/latest`);
         sensorDataCache = await res.json();
+        rebuildSensorDataMap();
     } catch {
         // Ignore
     }

@@ -235,6 +235,14 @@ telemetry.MapGet("/latest", (TelemetryService svc) =>
     return Results.Ok(svc.GetAllSensorData().OrderByDescending(d => d.Timestamp).Take(50));
 });
 
+// ── Needs Attention (proactive alert prioritisation) ─────
+// Computed server-side against O(1) dictionary lookups (registered sensors +
+// latest reading per sensor) rather than filtered client-side over a flat array.
+telemetry.MapGet("/needs-attention", (TelemetryService svc) =>
+{
+    return Results.Ok(svc.GetNeedsAttention());
+});
+
 telemetry.MapGet("/history", (TelemetryService svc) =>
 {
     var (batchCount, totalReadings, _) = svc.GetBatchInfo();
