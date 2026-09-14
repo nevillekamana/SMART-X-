@@ -15,6 +15,13 @@ public class SensorRegistration
     public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
     public bool IsActive { get; set; } = true;
 
+    // Operating limit for this sensor's readings (e.g. max safe wattage
+    // for a PowerConsumption sensor). Null means no capacity check applies.
+    // If left unset at registration time, RegisterSensor() assigns a sensible
+    // category default so the Needs Attention capacity/power-spike check has
+    // something to compare against.
+    public double? CapacityThreshold { get; set; }
+
     // Attached files (config files, deployment photos, hardware logs)
     public List<SensorAttachment> Attachments { get; set; } = new();
 
