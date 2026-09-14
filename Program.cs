@@ -154,7 +154,7 @@ telemetry.MapPost("/push/{type}", async (string type, HttpContext ctx, Telemetry
                     envData.SensorCategory = "Environmental";
                     envData.IsValidated = true;
                     svc.StorePacket(envData);
-                    svc.AddSensorData(new SensorData(envData.SensorId, "Environmental", envData.Location, envData.Value, "°C"));
+                    svc.AddSensorData(new SensorData(envData.SensorId, "Environmental", envData.Location, envData.Value, "°C", envData.SignalStrength));
                     return Results.Ok(new { message = "Environmental telemetry stored", packet = envData.ToString() });
                 }
                 catch (JsonException)
@@ -180,7 +180,7 @@ telemetry.MapPost("/push/{type}", async (string type, HttpContext ctx, Telemetry
                     pwrData.SensorCategory = "PowerConsumption";
                     pwrData.IsValidated = true;
                     svc.StorePacket(pwrData);
-                    svc.AddSensorData(new SensorData(pwrData.SensorId, "PowerConsumption", pwrData.Location, pwrData.Value, "W"));
+                    svc.AddSensorData(new SensorData(pwrData.SensorId, "PowerConsumption", pwrData.Location, pwrData.Value, "W", pwrData.SignalStrength));
                     return Results.Ok(new { message = "Power telemetry stored", packet = pwrData.ToString() });
                 }
                 catch (JsonException)
@@ -202,7 +202,7 @@ telemetry.MapPost("/push/{type}", async (string type, HttpContext ctx, Telemetry
                     actData.SensorCategory = "Actuator";
                     actData.IsValidated = true;
                     svc.StorePacket(actData);
-                    svc.AddSensorData(new SensorData(actData.SensorId, "Actuator", actData.Location, actData.Value ? 1 : 0, "state"));
+                    svc.AddSensorData(new SensorData(actData.SensorId, "Actuator", actData.Location, actData.Value ? 1 : 0, "state", actData.SignalStrength));
                     return Results.Ok(new { message = "Actuator telemetry stored", packet = actData.ToString() });
                 }
                 catch (JsonException)
