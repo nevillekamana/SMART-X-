@@ -19,7 +19,8 @@ Some of the other planned features, such as the real-time command stream and mes
 | Storage | In-memory `Dictionary` and `List` collections |
 
 The dashboard is inside the `wwwroot` folder, so the same ASP.NET Core application serves both the API and the frontend. This means I only need to run one application.
-
+## VIDEO LINK
+https://www.youtube.com/watch?v=NkO0CCrsWm8
 ---
 
 ## Requirements
@@ -358,7 +359,7 @@ There are a few limitations with the current version:
 - The real-time command stream and mesh visualisation are not enabled in this version.
 - The dashboard is simple and does not have advanced features such as filterin
 
-## VIDEO LINK
+
 ---
 
 ## Author
