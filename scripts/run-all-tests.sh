@@ -14,7 +14,7 @@ for _ in $(seq 1 120); do curl -s -o /dev/null "$URL/api/stream/devices" && brea
 curl -s -o /dev/null "$URL/api/stream/devices" || { echo "API did not start — see /tmp/smartx-test-server.log"; exit 2; }
 
 RC=0
-echo "################ test-part2.sh";            ./scripts/test-part2.sh "$URL"            || RC=1
+echo "################ test-part2.sh";            bash ./scripts/test-part2.sh "$URL"            || RC=1
 echo; echo "################ ui-smoke (jsdom)";  (cd scripts/ui-smoke && { [ -d node_modules ] || npm install --silent; } && node ui.js "$URL") || RC=1
-echo; echo "################ test-part3.sh";       ./scripts/test-part3.sh "$URL"            || RC=1
+echo; echo "################ test-part3.sh";       bash ./scripts/test-part3.sh "$URL"            || RC=1
 exit $RC
