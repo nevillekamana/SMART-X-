@@ -2,6 +2,7 @@ using SmartX.Models.Streaming;
 
 namespace SmartX.Services.Streaming;
 
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
 public enum EventKind { Alert, Search, Command }
 
 /// <summary>One thing that happened on the console: an alert fired, the operator searched, or the operator ran a command.</summary>
