@@ -25,7 +25,8 @@ builder.Services.AddSingleton<SmartX.Services.Mesh.TelemetryHistoryIndex>();   /
 builder.Services.AddSingleton<DeviceRegistry>();       // Dictionary + SortedDictionary
 builder.Services.AddSingleton<PredictiveEngine>();     // transition model, forecasts, risk heap
 builder.Services.AddSingleton<IngestionPipeline>();    // Queue, PriorityQueue, HashSet
-builder.Services.AddSingleton<CommandService>();       // Stack (undo)
+builder.Services.AddSingleton<CommandService>();
+builder.Services.AddSingleton<SmartX.Services.Mesh.MeshNetwork>();   // graph, BFS/DFS, Prim/Kruskal (final PoE)       // Stack (undo)
 builder.Services.AddHostedService<DeviceSeeder>();     // demo fleet + history
 builder.Services.AddHostedService<StreamProcessor>();  // drains the queues
 
@@ -376,6 +377,7 @@ deployment.MapGet("/find/{name}", (string name, DeploymentValidationService dsvc
 
 // ── Part 2: /api/stream/* ──
 app.MapStreamEndpoints();
+app.MapMeshEndpoints();      // final PoE: /api/mesh/*
 
 // ── Dashboard Fallback ─────────────────────────────────
 
