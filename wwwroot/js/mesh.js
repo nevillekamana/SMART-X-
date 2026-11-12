@@ -212,7 +212,7 @@
         const msg = $('mesh-route-msg');
         if (!r.ok) { msg.textContent = (r.data && r.data.error) || 'Could not load route.'; return; }
         msg.textContent = '';
-        const rj = JSON.stringify(r.data) + '|' + (M.topoJson.length);
+        const rj = JSON.stringify(r.data) + '|' + M.topoJson;
         if (!force && rj === M.routeJson) return;
         M.routeJson = rj;
         const d = r.data;
@@ -223,7 +223,7 @@
         $('mesh-failover-note').textContent = d.failoverNote || '';
         if (M.topo) {
             const differ = d.dijkstra.found && d.mst.found && d.dijkstra.path.join() !== d.mst.path.join();
-            drawMap($('mesh-map-route'), M.topo, { treePath: d.mst.found ? d.mst.path : (d.preOutage.found ? [] : []), dijPath: differ ? d.dijkstra.path : null, selectable: false });
+            drawMap($('mesh-map-route'), M.topo, { treePath: d.mst.found ? d.mst.path : [], dijPath: differ ? d.dijkstra.path : null, selectable: false });
         }
     }
 
@@ -418,6 +418,7 @@
         if (!wired) { load(); wire(); wired = true; $('mesh-algo').value = M.algo; $('mesh-show-tree').checked = M.showTree; }
         M.tab = tab || 'topology';
         const was = M.running; M.running = true;
+        if (M.tab === 'history' && M.nodes.length) fillHistorySelect();       // instant, from cached nodes
         await pollTopology(true);
         if (M.tab === 'routes') { if (M.routeId) { const n = M.nodes.find(x => x.id === M.routeId); $('mesh-route-input').value = n ? n.name : M.routeId; await pollRoute(true); } renderRouteChips(); }
         if (M.tab === 'history') {

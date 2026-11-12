@@ -1,0 +1,8 @@
+{
+  "name": "smartx-ui-smoke",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom smoke test that drives the real Smart-X dashboard against a running API (test tooling only — not shipped with the app)",
+  "scripts": { "test": "node ui.js" },
+  "devDependencies": { "jsdom": "^26.0.0" }
+}
