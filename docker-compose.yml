@@ -1,0 +1,11 @@
+services:
+  smartx:
+    build: .
+    ports:
+      - "59185:8080"
+    environment:
+      # Part 2 tuning (all optional)
+      Streaming__DisconnectAfterSeconds: "30"
+      Streaming__ForwardToPart1EverySeconds: "5"
+      Streaming__SeedDemoDevices: "true"
+    restart: unless-stopped

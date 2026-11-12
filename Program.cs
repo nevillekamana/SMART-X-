@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using SmartX.Endpoints;
 using SmartX.Models;
 using SmartX.Services;
+using SmartX.Services.Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +19,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<DeploymentValidationService>();
 builder.Services.AddScoped<FileUploadService>();
+
+// ── Part 2: real-time command stream ──
+builder.Services.AddSingleton<DeviceRegistry>();       // Dictionary + SortedDictionary
+builder.Services.AddSingleton<PredictiveEngine>();     // transition model, forecasts, risk heap
+builder.Services.AddSingleton<IngestionPipeline>();    // Queue, PriorityQueue, HashSet
+builder.Services.AddSingleton<CommandService>();       // Stack (undo)
+builder.Services.AddHostedService<DeviceSeeder>();     // demo fleet + history
+builder.Services.AddHostedService<StreamProcessor>();  // drains the queues
 
 // Add Swagger for API documentation
 builder.Services.AddEndpointsApiExplorer();
@@ -362,6 +372,9 @@ deployment.MapGet("/find/{name}", (string name, DeploymentValidationService dsvc
     var node = dsvc.FindNode(name);
     return node is not null ? Results.Ok(node) : Results.NotFound(new { error = $"Node '{name}' not found" });
 });
+
+// ── Part 2: /api/stream/* ──
+app.MapStreamEndpoints();
 
 // ── Dashboard Fallback ─────────────────────────────────
 

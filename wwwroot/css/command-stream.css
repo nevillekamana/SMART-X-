@@ -1,0 +1,372 @@
+/* ═══════════════════════════════════════════════════════
+   PART 2 — Real-Time Command Stream
+   Re-uses the Part 1 design tokens (colours, radius, fonts) so both modules feel like one product.
+   ═══════════════════════════════════════════════════════ */
+
+/* ─── Sidebar: module switcher ─── */
+.side-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    padding: 0 0.5rem;
+    margin: 0.2rem 0 0.4rem;
+}
+
+.module-switch {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 1.1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.module-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+    .module-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+    .module-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+    .module-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .module-btn:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+
+.mod-tag {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+
+.module-btn.active .mod-tag { color: var(--accent); opacity: 0.75; }
+
+.mod-alert {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-width: 18px;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: var(--error);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.status-dot.offline { background: var(--error); }
+
+/* ─── KPI row ─── */
+.cs-kpis { grid-template-columns: repeat(6, 1fr); }
+.cs-kpis .stat-value.bad { color: var(--error); }
+.cs-kpis .stat-value.warn { color: var(--warning); }
+.cs-kpis .stat-value.good { color: var(--success); }
+
+/* ─── Layout ─── */
+.cs-live-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.cs-col { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.cs-col > .card + .card { margin-top: 0; }
+
+.cs-filter-row {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+    .cs-filter-row input, .cs-filter-row select,
+    .cs-inline select, .field select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        background: var(--bg-card);
+        font: inherit;
+        font-size: 0.85rem;
+        color: var(--text);
+    }
+
+    .cs-filter-row input:focus, .cs-filter-row select:focus, .cs-inline select:focus {
+        outline: 2px solid var(--link);
+        outline-offset: 0;
+        border-color: var(--link);
+    }
+
+.cs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0.75rem; min-height: 0; }
+.cs-chips:empty { display: none; }
+
+.cs-chip {
+    border: 1px solid var(--border-strong);
+    background: var(--bg-subtle);
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+    .cs-chip:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+.cs-sub-head {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 1rem 0 0.5rem;
+}
+
+/* ─── Device cards ─── */
+.cs-device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+    gap: 0.75rem;
+}
+
+.cs-device {
+    position: relative;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    padding: 0.7rem 0.8rem;
+    cursor: pointer;
+    transition: box-shadow 0.15s, border-color 0.15s, background 0.3s;
+}
+
+    .cs-device:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
+    .cs-device:focus-visible { outline: 2px solid var(--link); }
+    .cs-device.selected { box-shadow: 0 0 0 2px var(--link); }
+    .cs-device.state-healthy { border-left-color: var(--success); }
+    .cs-device.state-warning { border-left-color: var(--warning); background: var(--warning-soft); }
+    .cs-device.state-critical { border-left-color: var(--error); background: var(--error-soft); }
+    .cs-device.state-disconnected { border-left-color: var(--text-faint); background: var(--bg-subtle); opacity: 0.92; }
+    .cs-device.state-awaiting { border-left-color: var(--border-strong); }
+
+.cs-dev-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.cs-dev-name { font-weight: 700; font-size: 0.88rem; }
+.cs-dev-mac { font-family: var(--font-mono); font-size: 0.64rem; color: var(--text-faint); }
+.cs-dev-loc { font-size: 0.72rem; color: var(--text-dim); }
+
+.cs-dev-reading { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 0.4rem; }
+.cs-dev-value { font-size: 1.35rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cs-dev-value small { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); margin-left: 2px; }
+
+.cs-spark { width: 90px; height: 28px; overflow: visible; }
+.cs-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.state-critical .cs-spark polyline { stroke: var(--error); }
+.state-warning .cs-spark polyline { stroke: var(--warning); }
+.state-disconnected .cs-spark polyline { stroke: var(--text-faint); stroke-dasharray: 3 3; }
+
+.cs-dev-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 0.45rem; gap: 6px; font-size: 0.7rem; color: var(--text-dim); }
+
+.cs-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 20px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+    .cs-pill.healthy { background: var(--success-soft); color: var(--success); }
+    .cs-pill.warning { background: var(--warning-soft); color: var(--warning); }
+    .cs-pill.critical { background: var(--error-soft); color: var(--error); }
+    .cs-pill.disconnected { background: var(--bg-hover); color: var(--text-dim); }
+    .cs-pill.awaiting { background: var(--bg-subtle); color: var(--text-faint); }
+
+.cs-switch {
+    border: 1px solid var(--border-strong);
+    background: var(--bg-subtle);
+    color: var(--text-dim);
+    border-radius: 20px;
+    padding: 2px 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    min-width: 52px;
+}
+
+    .cs-switch.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .cs-switch:hover { filter: brightness(0.95); }
+    .cs-switch:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+
+.cs-pending { color: var(--warning); font-weight: 600; }
+
+/* ─── Detail / timeline ─── */
+.cs-chart { width: 100%; height: auto; display: block; }
+.cs-chart .grid { stroke: var(--border); stroke-width: 1; }
+.cs-chart .axis { font-size: 10px; fill: var(--text-faint); font-family: var(--font-mono); }
+.cs-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.cs-chart .area { fill: var(--accent); opacity: 0.08; }
+.cs-chart .limit { stroke: var(--error); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.cs-chart .limit-label { font-size: 10px; fill: var(--error); font-weight: 700; }
+.cs-chart .dot { fill: var(--accent); stroke: #fff; stroke-width: 2; }
+.cs-chart.bad .line { stroke: var(--error); }
+.cs-chart.bad .dot { fill: var(--error); }
+.cs-chart.bad .area { fill: var(--error); }
+
+.cs-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; margin-bottom: 0.9rem; }
+.cs-detail-grid div { background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; }
+.cs-detail-grid small { display: block; font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); font-weight: 700; }
+.cs-detail-grid b { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.cs-detail-alerts { margin: 0.7rem 0; display: flex; flex-direction: column; gap: 6px; }
+.cs-alert-line { font-size: 0.8rem; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--error-soft); color: var(--error); }
+.cs-alert-line.Warning { background: var(--warning-soft); color: var(--warning); }
+
+/* ─── Suggestions & insights ─── */
+.cs-suggest-card { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft) 0, var(--bg-card) 60px); }
+
+.cs-sugg {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    padding: 0.7rem 0.8rem;
+    margin-bottom: 0.6rem;
+    animation: cs-in 0.35s ease-out;
+}
+
+.cs-sugg-title { font-weight: 700; font-size: 0.9rem; }
+.cs-sugg-reason { font-size: 0.76rem; color: var(--text-dim); margin: 2px 0 6px; line-height: 1.45; }
+.cs-sugg-meta { font-size: 0.7rem; color: var(--text-faint); }
+.cs-conf { height: 5px; border-radius: 3px; background: var(--bg-hover); overflow: hidden; margin-bottom: 4px; }
+.cs-conf span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
+.cs-sugg-actions { display: flex; flex-direction: column; gap: 4px; justify-content: center; flex-shrink: 0; }
+.cs-sugg-actions button { padding: 5px 12px; font-size: 0.76rem; }
+.cs-link-btn { background: none; border: none; color: var(--text-faint); font-size: 0.7rem; cursor: pointer; text-decoration: underline; }
+.cs-link-btn:hover { color: var(--text); }
+.cs-model-note { font-size: 0.68rem; color: var(--text-faint); margin-top: 0.4rem; line-height: 1.4; }
+
+.cs-insight { display: flex; gap: 0.6rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.cs-insight:last-child { border-bottom: none; }
+.cs-insight:hover .cs-ins-title { color: var(--link); }
+.cs-ins-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: var(--text-faint); }
+.cs-ins-dot.warn { background: var(--warning); }
+.cs-ins-dot.critical { background: var(--error); }
+.cs-ins-title { font-weight: 600; font-size: 0.84rem; }
+.cs-ins-detail { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+
+.cs-risk { display: grid; grid-template-columns: 1fr 70px; gap: 8px; align-items: center; padding: 4px 0; font-size: 0.8rem; cursor: pointer; }
+.cs-risk small { color: var(--text-faint); display: block; font-size: 0.68rem; }
+.cs-risk-bar { height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.cs-risk-bar span { display: block; height: 100%; background: var(--error); }
+
+.cs-quick { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cs-quick button { font-size: 0.78rem; padding: 6px 12px; }
+.cs-cmd-buttons { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.cs-inline { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.cs-inline select { width: auto; flex: 1; min-width: 120px; }
+
+.empty-note { font-size: 0.8rem; color: var(--text-faint); padding: 0.4rem 0; line-height: 1.5; }
+
+/* ─── Undo stack ─── */
+.cs-stack { display: flex; flex-direction: column; gap: 6px; }
+.cs-stack-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    background: var(--bg-subtle);
+}
+.cs-stack-item.top { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.cs-stack-item small { color: var(--text-faint); font-weight: 600; letter-spacing: 0.08em; }
+
+.cs-status { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.cs-status.active { color: var(--success); }
+.cs-status.undone { color: var(--text-faint); }
+.cs-status.undo { color: var(--link); }
+tr.undone td:nth-child(2) { text-decoration: line-through; color: var(--text-faint); }
+
+/* ─── Pipeline monitor ─── */
+.cs-lane { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.8rem 0.9rem; margin-bottom: 0.75rem; }
+.cs-lane.priority { border-color: var(--error); background: var(--error-soft); }
+.cs-lane-head { display: flex; align-items: baseline; gap: 0.6rem; }
+.cs-lane-head .lane-name { font-weight: 700; font-size: 0.9rem; }
+.cs-lane-head .lane-sub { font-size: 0.7rem; color: var(--text-dim); flex: 1; }
+.cs-lane-head b { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.cs-lane-bar { height: 8px; border-radius: 4px; background: rgba(0,0,0,0.07); overflow: hidden; margin: 0.5rem 0; }
+.cs-lane-bar span { display: block; height: 100%; background: var(--accent); transition: width 0.4s; border-radius: 4px; }
+.cs-lane.priority .cs-lane-bar span { background: var(--error); }
+.cs-lane-items { display: flex; flex-wrap: wrap; gap: 5px; min-height: 22px; }
+.cs-pend { font-size: 0.68rem; font-family: var(--font-mono); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 4px; padding: 1px 6px; }
+.cs-lane.priority .cs-pend { border-color: var(--error); color: var(--error); font-weight: 700; }
+
+.cs-log td, .cs-log th { font-size: 0.78rem; padding: 6px 8px; }
+.cs-log td.num { font-family: var(--font-mono); color: var(--text-dim); }
+tr.hl td { background: var(--warning-soft); font-weight: 700; }
+.lane-badge { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 7px; border-radius: 20px; }
+.lane-badge.Priority { background: var(--error-soft); color: var(--error); }
+.lane-badge.Standard { background: var(--bg-hover); color: var(--text-dim); }
+
+.cs-dupes { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0.7rem; }
+.cs-dupes span { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
+.cs-dupes small { color: var(--text-dim); font-size: 0.78rem; }
+
+.cs-alert-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+.cs-alert-row small { color: var(--text-faint); display: block; font-size: 0.7rem; }
+
+@keyframes cs-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes cs-flash { 0% { background: var(--warning-soft); } 100% { background: transparent; } }
+.cs-flash { animation: cs-flash 1s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+    .cs-sugg, .cs-flash { animation: none; }
+    .cs-conf span, .cs-lane-bar span { transition: none; }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 1280px) { .cs-kpis { grid-template-columns: repeat(3, 1fr); } }
+
+@media (max-width: 1100px) {
+    .cs-live-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+    .cs-kpis { grid-template-columns: repeat(2, 1fr); }
+    .cs-filter-row { grid-template-columns: 1fr; }
+    .cs-detail-grid { grid-template-columns: repeat(2, 1fr); }
+    .module-switch { flex-direction: row; border-bottom: none; margin: 0; padding: 0; }
+    .module-btn { white-space: nowrap; }
+    .side-label { display: none; }
+}
+
+.cs-demo-result {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    line-height: 1.45;
+}

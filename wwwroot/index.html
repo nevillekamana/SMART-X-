@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMART-X Gateway Dashboard</title>
     <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/command-stream.css">
 </head>
 <body>
 
@@ -22,11 +23,11 @@
                 <p>Register sensors, push telemetry, validate deployments, and aggregate data in real time.</p>
                 <span class="badge active">ACTIVE — Part 1</span>
             </div>
-            <div class="pillar-card disabled">
+            <div class="pillar-card active" onclick="activatePillar('commands')">
                 <div class="pillar-icon"></div>
                 <h2>Real-Time Command Stream &amp; History</h2>
-                <p>Issue live commands to actuators and review command history with replay.</p>
-                <span class="badge disabled">DISABLED — Part 2</span>
+                <p>Watch the live device stream, override actuators with one-tap undo, and get predictive suggestions.</p>
+                <span class="badge active">ACTIVE — Part 2</span>
             </div>
             <div class="pillar-card disabled">
                 <div class="pillar-icon"></div>
@@ -48,7 +49,22 @@
             </div>
             <button class="back-btn" onclick="showStartup()">◄ Back to platform</button>
 
-            <nav class="side-nav">
+            <div class="module-switch" role="navigation" aria-label="Platform modules">
+                <div class="side-label">MODULES</div>
+                <button class="module-btn active" data-module="telemetry" onclick="navigate('telemetry')">
+                    <span>Sensor Ingestion &amp; Telemetry</span><span class="mod-tag">Part 1</span>
+                </button>
+                <button class="module-btn" data-module="commands" onclick="navigate('commands')">
+                    <span>Real-Time Command Stream</span><span class="mod-tag">Part 2</span>
+                    <span class="mod-alert hidden" id="mod-alert-badge" title="Critical alerts">0</span>
+                </button>
+                <button class="module-btn" disabled title="Implemented in the final PoE">
+                    <span>Network Topology &amp; Mesh Routing</span><span class="mod-tag">Final PoE</span>
+                </button>
+            </div>
+
+            <div class="side-label">NAVIGATION</div>
+            <nav class="side-nav" id="nav-telemetry">
                 <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
                 <button class="nav-btn" data-tab="sensors" onclick="switchTab('sensors')">Sensors</button>
                 <button class="nav-btn" data-tab="telemetry" onclick="switchTab('telemetry')">Telemetry</button>
@@ -56,9 +72,14 @@
                 <button class="nav-btn" data-tab="operator" onclick="switchTab('operator')">Operator</button>
                 <button class="nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
             </nav>
+            <nav class="side-nav hidden" id="nav-commands">
+                <button class="cs-nav-btn active" data-tab="live" onclick="navigate('commands','live')">Live stream</button>
+                <button class="cs-nav-btn" data-tab="commands" onclick="navigate('commands','commands')">Commands &amp; history</button>
+                <button class="cs-nav-btn" data-tab="pipeline" onclick="navigate('commands','pipeline')">Pipeline monitor</button>
+            </nav>
 
             <div class="sidebar-footer">
-                <div><span class="status-dot"></span>Gateway online</div>
+                <div><span class="status-dot" id="gw-dot"></span><span id="gw-text">Gateway online</span></div>
                 <div class="sync-line" id="sidebar-sync">SYNC —</div>
             </div>
         </aside>
@@ -460,6 +481,237 @@
                 </div>
             </section>
 
+
+            <!-- ═══════════════ PART 2 — REAL-TIME COMMAND STREAM ═══════════════ -->
+
+            <!-- ── Live stream ── -->
+            <section id="tab-cs-live" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Command stream</div>
+                        <h1>Live stream</h1>
+                        <div class="page-desc">Watch every device, catch trouble before it escalates, and override from one place.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" id="cs-undo-btn" data-action="undo" disabled>↶ Undo last command</button>
+                        <button class="btn-primary cs-sim-toggle" id="cs-sim-toggle" data-action="sim-toggle">▶ Start device simulator</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="stat-grid cs-kpis" id="cs-kpis">
+                        <div class="stat-card"><div class="stat-label">Devices healthy</div><div class="stat-value" id="kpi-devices">—</div><div class="stat-sub" id="kpi-devices-sub">—</div></div>
+                        <div class="stat-card"><div class="stat-label">Critical</div><div class="stat-value" id="kpi-critical">—</div><div class="stat-sub" id="kpi-critical-sub">—</div></div>
+                        <div class="stat-card"><div class="stat-label">Disconnected</div><div class="stat-value" id="kpi-disc">—</div><div class="stat-sub" id="kpi-disc-sub">—</div></div>
+                        <div class="stat-card"><div class="stat-label">Queue depth</div><div class="stat-value" id="kpi-queue">—</div><div class="stat-sub" id="kpi-queue-sub">standard · priority</div></div>
+                        <div class="stat-card"><div class="stat-label">Throughput</div><div class="stat-value" id="kpi-rate">—</div><div class="stat-sub" id="kpi-rate-sub">—</div></div>
+                        <div class="stat-card"><div class="stat-label">Latency (priority)</div><div class="stat-value" id="kpi-lat">—</div><div class="stat-sub" id="kpi-lat-sub">—</div></div>
+                    </div>
+
+                    <div class="cs-live-grid">
+                        <div class="cs-col">
+                            <div class="card">
+                                <div class="card-head"><h2>Devices</h2><span class="card-meta" id="cs-device-count">—</span></div>
+                                <div class="cs-filter-row">
+                                    <input type="search" id="cs-search" placeholder="Search name, MAC, location" autocomplete="off" aria-label="Search devices">
+                                    <select id="cs-filter-category" aria-label="Filter by category">
+                                        <option value="">All categories</option>
+                                        <option value="Environmental">Environmental</option>
+                                        <option value="PowerConsumption">Power consumption</option>
+                                        <option value="Actuator">Actuator</option>
+                                    </select>
+                                    <select id="cs-filter-state" aria-label="Filter by alert state">
+                                        <option value="">Any state</option>
+                                        <option value="Alerting">Needs attention</option>
+                                        <option value="Critical">Critical</option>
+                                        <option value="Warning">Warning</option>
+                                        <option value="Disconnected">Disconnected</option>
+                                        <option value="Healthy">Healthy</option>
+                                        <option value="Awaiting">Awaiting data</option>
+                                    </select>
+                                </div>
+                                <div class="cs-chips" id="cs-frequent"></div>
+                                <div class="cs-device-grid" id="cs-device-grid"></div>
+                                <p class="placeholder-text hidden" id="cs-device-empty">No devices match these filters.</p>
+                            </div>
+
+                            <div class="card" id="cs-detail-card">
+                                <div class="card-head"><h2 id="cs-detail-title">Device timeline</h2><span class="card-meta" id="cs-detail-meta"></span></div>
+                                <div id="cs-detail-body"><p class="placeholder-text">Select a device to see its timeline, thresholds and history.</p></div>
+                            </div>
+                        </div>
+
+                        <div class="cs-col">
+                            <div class="card cs-suggest-card">
+                                <div class="card-head"><h2>Suggested actions</h2><span class="card-meta" id="cs-sugg-count">—</span></div>
+                                <div id="cs-suggestions"></div>
+                                <div class="cs-model-note" id="cs-model-note"></div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-head"><h2>Automated insights</h2><span class="card-meta" id="cs-insight-count">—</span></div>
+                                <div id="cs-insights"></div>
+                                <div class="cs-sub-head">Most at risk</div>
+                                <div id="cs-atrisk"></div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-head"><h2>Quick overrides</h2><span class="card-meta" id="cs-undo-depth">Undo stack: 0</span></div>
+                                <div class="cs-quick">
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Valve" data-act="Off">Shut all valves</button>
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Pump" data-act="Off">All pumps off</button>
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Relay" data-act="Off">All relays off</button>
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Fan" data-act="On">Fans on</button>
+                                </div>
+                                <p class="field-hint" style="margin-top:0.6rem">Every override goes onto an undo stack — <em>Undo</em> reverts the most recent one, including bulk actions in a single step.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Commands & history ── -->
+            <section id="tab-cs-commands" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Command stream</div>
+                        <h1>Commands &amp; history</h1>
+                        <div class="page-desc">Issue manual overrides and review everything that was sent. The undo stack is last-in, first-out.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" data-action="undo" id="cs-undo-btn-2" disabled>↶ Undo last command</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="panel-grid">
+                        <div class="card">
+                            <div class="card-head"><h2>Command history</h2><span class="card-meta" id="cs-history-count">0 entries</span></div>
+                            <table class="data-table">
+                                <thead><tr><th>Time</th><th>Command</th><th>Operator</th><th>Status</th></tr></thead>
+                                <tbody id="cs-history-body"><tr><td colspan="4"><p class="placeholder-text">No commands issued yet.</p></td></tr></tbody>
+                            </table>
+                        </div>
+                        <div>
+                            <div class="card">
+                                <div class="card-head"><h2>Send a command</h2></div>
+                                <div class="field">
+                                    <label for="cs-cmd-device">Actuator</label>
+                                    <select id="cs-cmd-device"><option value="">— Loading devices —</option></select>
+                                </div>
+                                <div class="cs-cmd-buttons">
+                                    <button class="btn-primary" data-action="cmd-selected" data-act="On">Turn ON</button>
+                                    <button class="btn-secondary" data-action="cmd-selected" data-act="Off">Turn OFF</button>
+                                    <button class="btn-secondary" data-action="cmd-selected" data-act="Toggle">Toggle</button>
+                                </div>
+                                <div class="cs-sub-head">Bulk overrides</div>
+                                <div class="cs-quick">
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Valve" data-act="Off">Shut all valves</button>
+                                    <button class="btn-secondary" data-action="bulk" data-kind="Pump" data-act="Off">All pumps off</button>
+                                    <button class="btn-secondary" data-action="bulk" data-kind="All" data-act="Off">Everything off</button>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-head"><h2>Undo stack</h2><span class="card-meta" id="cs-stack-meta">empty</span></div>
+                                <div class="cs-stack" id="cs-stack"><p class="placeholder-text">Nothing to undo.</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Pipeline monitor ── -->
+            <section id="tab-cs-pipeline" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Command stream</div>
+                        <h1>Pipeline monitor</h1>
+                        <div class="page-desc">See how packets are queued, how critical alerts jump the line, and how duplicate alerts are stopped.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" id="cs-proc-toggle" data-action="proc-toggle">Pause processor</button>
+                        <button class="btn-primary" id="cs-demo-btn" data-action="priority-demo">Run priority demo</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="panel-grid">
+                        <div>
+                            <div class="card">
+                                <div class="card-head"><h2>Ingestion lanes</h2><span class="card-meta" id="cs-proc-state">Processor running</span></div>
+                                <div class="cs-demo-result hidden" id="cs-demo-result" role="status"></div>
+                                <div class="cs-lane priority">
+                                    <div class="cs-lane-head"><span class="lane-name">⚡ Priority lane</span><span class="lane-sub">PriorityQueue · critical alerts · drained first</span><b id="cs-depth-priority">0</b></div>
+                                    <div class="cs-lane-bar"><span id="cs-bar-priority" style="width:0%"></span></div>
+                                    <div class="cs-lane-items" id="cs-pending-priority"></div>
+                                </div>
+                                <div class="cs-lane standard">
+                                    <div class="cs-lane-head"><span class="lane-name">Standard lane</span><span class="lane-sub">Queue&lt;T&gt; · first-in, first-out</span><b id="cs-depth-standard">0</b></div>
+                                    <div class="cs-lane-bar"><span id="cs-bar-standard" style="width:0%"></span></div>
+                                    <div class="cs-lane-items" id="cs-pending-standard"></div>
+                                </div>
+                                <div class="chip-row" style="margin-top:1rem">
+                                    <div class="chip">Ingested<strong id="cs-c-ingested">0</strong></div>
+                                    <div class="chip">Processed (std / prio)<strong id="cs-c-processed">0 / 0</strong></div>
+                                    <div class="chip">Rejected<strong id="cs-c-rejected">0</strong></div>
+                                    <div class="chip">Avg latency (std / prio)<strong id="cs-c-latency">— / —</strong></div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-head"><h2>Recently processed</h2><span class="card-meta">newest first · “#” is processing order</span></div>
+                                <table class="data-table cs-log">
+                                    <thead><tr><th>#</th><th>Seq</th><th>Lane</th><th>Device</th><th>Value</th><th>Latency</th></tr></thead>
+                                    <tbody id="cs-log-body"><tr><td colspan="6"><p class="placeholder-text">Nothing processed yet.</p></td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="card">
+                                <div class="card-head"><h2>Active alerts</h2><span class="card-meta" id="cs-alert-meta">HashSet · 0 unique</span></div>
+                                <div class="cs-dupes"><span id="cs-dupes">0</span><small>duplicate alerts suppressed</small></div>
+                                <div id="cs-alerts"><p class="placeholder-text">No active alerts.</p></div>
+                                <div class="cs-sub-head">Test duplicate suppression</div>
+                                <div class="cs-inline">
+                                    <select id="cs-disc-device" aria-label="Device to report"></select>
+                                    <button class="btn-secondary" data-action="disc-report">Report disconnected ×5</button>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-head"><h2>Device simulator</h2><span class="card-meta" id="cs-sim-meta">stopped</span></div>
+                                <p class="card-desc">Runs in your browser but talks to the API exactly like an ESP32 would: one <code>POST /api/stream/ingest</code> per reading.</p>
+                                <div class="cs-inline">
+                                    <button class="btn-primary" data-action="sim-toggle" id="cs-sim-toggle-2">▶ Start</button>
+                                    <select id="sim-interval" aria-label="Send interval">
+                                        <option value="500">every 0.5 s</option>
+                                        <option value="1000">every 1 s</option>
+                                        <option value="1500" selected>every 1.5 s</option>
+                                        <option value="3000">every 3 s</option>
+                                    </select>
+                                </div>
+                                <div class="cs-sub-head">Scenarios</div>
+                                <div class="cs-quick">
+                                    <button class="btn-secondary" data-action="scenario-preset" data-name="Moisture Sensor B" data-kind="critical">Drought · Moisture B</button>
+                                    <button class="btn-secondary" data-action="scenario-preset" data-name="Smart Meter 2" data-kind="critical">Power spike · Meter 2</button>
+                                    <button class="btn-secondary" data-action="scenario-preset" data-name="Greenhouse Temp 2" data-kind="critical">Overheat · Temp 2</button>
+                                    <button class="btn-secondary" data-action="scenario-preset" data-name="Smart Meter 3" data-kind="dropout">Drop Meter 3 offline</button>
+                                </div>
+                                <div class="cs-inline" style="margin-top:0.6rem">
+                                    <select id="sim-device" aria-label="Scenario device"></select>
+                                    <select id="sim-kind" aria-label="Scenario">
+                                        <option value="critical">push to critical</option>
+                                        <option value="dropout">go offline</option>
+                                        <option value="weak">weak signal</option>
+                                    </select>
+                                    <button class="btn-secondary" data-action="scenario-apply">Apply</button>
+                                </div>
+                                <div class="cs-inline" style="margin-top:0.6rem">
+                                    <button class="btn-secondary" data-action="scenario-clear">Restore all devices</button>
+                                    <button class="btn-secondary" data-action="burst">Burst ×60</button>
+                                </div>
+                                <div class="field-hint" id="cs-sim-stats" style="margin-top:0.6rem"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -467,5 +719,6 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="/js/dashboard.js"></script>
+    <script src="/js/commandStream.js"></script>
 </body>
 </html>

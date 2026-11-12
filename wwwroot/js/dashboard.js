@@ -22,18 +22,29 @@ let pulseTimeout = null;
 //  STARTUP / PLATFORM SELECTION
 // ═══════════════════════════════════════════════
 
+// Part 2 adds a second active module. `navigate()` below is the single entry point for moving
+// between modules and tabs; it never reloads the page, so in-memory state (filters, selected device,
+// the running device simulator, caches) survives every switch.
+const MODULES = {
+    telemetry: { label: 'Sensor Ingestion & Telemetry', defaultTab: 'overview' },
+    commands:  { label: 'Real-Time Command Stream',     defaultTab: 'live' }
+};
+const lastTabByModule = {};
+let activeModule = null;
+
 function activatePillar(pillar) {
-    if (pillar !== 'telemetry') return; // other pillars are disabled for this build
+    if (!MODULES[pillar]) return; // the Network Topology pillar is implemented in the final PoE
     document.getElementById('startup-screen').classList.add('hidden');
     document.getElementById('app-shell').classList.remove('hidden');
-    loadOverview();
-    loadSensors();
-    loadTelemetryFeed();
+    navigate(pillar);
 }
 
 function showStartup() {
+    if (activeModule === 'commands' && window.CS) window.CS.onHide();
+    activeModule = null;
     document.getElementById('app-shell').classList.add('hidden');
     document.getElementById('startup-screen').classList.remove('hidden');
+    if (location.hash) history.pushState(null, '', location.pathname + location.search);
 }
 
 // Startup screen pulse-ring animation
@@ -82,12 +93,50 @@ function showStartup() {
 //  NAVIGATION
 // ═══════════════════════════════════════════════
 
-function switchTab(tabName) {
-    document.querySelectorAll('.side-nav .nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelector(`.side-nav .nav-btn[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`tab-${tabName}`).classList.add('active');
+// Part 1 tabs keep their original entry point.
+function switchTab(tabName) { navigate('telemetry', tabName); }
 
+function panelIdFor(module, tab) { return module === 'commands' ? `tab-cs-${tab}` : `tab-${tab}`; }
+
+function navigate(module, tab, { fromHash = false } = {}) {
+    if (!MODULES[module]) module = 'telemetry';
+    const known = Array.from(document.querySelectorAll(module === 'commands' ? '#nav-commands button' : '#nav-telemetry button'))
+        .map(b => b.dataset.tab);
+    if (!tab || !known.includes(tab)) tab = lastTabByModule[module] || MODULES[module].defaultTab;
+    lastTabByModule[module] = tab;
+
+    const leaving = activeModule && activeModule !== module ? activeModule : null;
+    if (leaving === 'commands' && window.CS) window.CS.onHide();
+    activeModule = module;
+
+    // module switcher + the nav list that belongs to this module
+    document.querySelectorAll('.module-btn[data-module]').forEach(b => b.classList.toggle('active', b.dataset.module === module));
+    document.getElementById('nav-telemetry').classList.toggle('hidden', module !== 'telemetry');
+    document.getElementById('nav-commands').classList.toggle('hidden', module !== 'commands');
+    document.querySelectorAll('#nav-telemetry button, #nav-commands button')
+        .forEach(b => b.classList.toggle('active', b.dataset.tab === tab && b.closest('nav').id === `nav-${module}`));
+
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(panelIdFor(module, tab)).classList.add('active');
+
+    const wanted = `#/${module}/${tab}`;
+    if (!fromHash && location.hash !== wanted) history.pushState(null, '', wanted);
+    try { sessionStorage.setItem('smartx.route', wanted); } catch { /* storage unavailable */ }
+
+    if (module === 'commands') { if (window.CS) window.CS.onShow(tab); return; }
+    showTelemetryTab(tab);
+}
+
+function routeFromHash() {
+    const m = /^#\/(\w+)\/(\w+)$/.exec(location.hash);
+    if (!m || !MODULES[m[1]]) return false;
+    document.getElementById('startup-screen').classList.add('hidden');
+    document.getElementById('app-shell').classList.remove('hidden');
+    navigate(m[1], m[2], { fromHash: true });
+    return true;
+}
+
+function showTelemetryTab(tabName) {
     if (tabName === 'overview') loadOverview();
     if (tabName === 'sensors') loadSensors();
     if (tabName === 'telemetry') loadTelemetryFeed();
@@ -100,6 +149,11 @@ function init() {
     updateSyncLabel();
     setInterval(updateSyncLabel, 30000);
     startNeedsAttentionPolling();
+
+    // Deep links / refresh / browser back-forward all go through the same router.
+    window.addEventListener('hashchange', () => { if (!routeFromHash()) showStartup(); });
+    window.addEventListener('popstate', () => { if (!routeFromHash() && activeModule) showStartup(); });
+    routeFromHash();
 }
 document.addEventListener('DOMContentLoaded', init);
 
@@ -564,7 +618,7 @@ async function loadTelemetryQuiet() {
 }
 
 function telemetryTypeLabel(d) {
-    if (d.unit === '°C' || d.unit === '°F') return 'Environmental';
+    if (d.unit === '°C' || d.unit === '°F' || d.unit === '%') return 'Environmental';
     if (d.unit === 'W') return 'Power';
     if (typeof d.value === 'boolean' || d.value === 'true' || d.value === 'false' || d.value === 'ON' || d.value === 'OFF') return 'Actuator';
     return d.type || '—';
