@@ -423,7 +423,7 @@ The tests also confirmed that:
 | Requirement | Structure | Where |
 |---|---|---|
 | FIFO ingestion of every packet | `Queue<StreamPacket>` | `IngestionPipeline` |
-| Critical alerts overtake the queue | `PriorityQueue<StreamPacket,int>` drained first | `IngestionPipeline` |
+| Critical alerts overtake the queue | `PriorityQueue<StreamPacket,(int Urgency, long Seq)>` drained first | `IngestionPipeline` |
 | Undo manual overrides | `Stack<CommandRecord>` | `CommandService` |
 | O(1) device lookup by MAC | `Dictionary<string, LiveDevice>` | `DeviceRegistry` |
 | Timelines in order | `SortedDictionary<long, ReadingPoint>` per device | `DeviceRegistry` |
