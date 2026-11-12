@@ -8,4 +8,6 @@ services:
       Streaming__DisconnectAfterSeconds: "30"
       Streaming__ForwardToPart1EverySeconds: "5"
       Streaming__SeedDemoDevices: "true"
+      # Final PoE: hours of telemetry history back-filled into the AVL archive at start-up
+      Mesh__SeedHistoryHours: "24"
     restart: unless-stopped
