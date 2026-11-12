@@ -366,6 +366,18 @@ public class IngestionPipeline
         }
     }
 
+    /// <summary>MACs that currently have an active "Disconnected" alert (read from the Part 2 alert state). Used by the mesh to mark nodes DOWN.</summary>
+    public HashSet<string> GetDisconnectedMacs()
+    {
+        lock (_gate)
+        {
+            return _alertDetails.Values
+                .Where(a => a.Type == "Disconnected")
+                .Select(a => a.Mac)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     public object GetAlertSnapshot()
     {
         lock (_gate)
