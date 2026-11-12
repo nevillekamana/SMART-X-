@@ -99,7 +99,20 @@ public static class StreamEndpoints
             return Results.Ok(new { matched = matches.Count, logged = target is not null, device = target?.Name });
         });
 
-        g.MapGet("/insights", (IngestionPipeline p, PredictiveEngine e) => Results.Ok(e.GetInsights(p.GetActiveAlerts())));
+        // Async: the two halves of the engine run in parallel and stop early if the browser abandons the request.
+        g.MapGet("/insights", async (IngestionPipeline p, PredictiveEngine e, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await e.GetInsightsAsync(p.GetActiveAlerts(), ct)); }
+            catch (OperationCanceledException) { return Results.StatusCode(StatusCodes.Status499ClientClosedRequest); }
+        });
+
+        // The bounded Queue<OperatorEvent> behind the engine: newest first, at most 200 kept.
+        g.MapGet("/insights/history", (int? take, PredictiveEngine e) =>
+        {
+            var (depth, capacity) = e.QueryHistoryStats();
+            var events = e.RecentQueries(take ?? 20);
+            return Results.Ok(new { depth, capacity, count = events.Count, events });
+        });
     }
 
     private static IResult Guard(Func<IResult> action)
