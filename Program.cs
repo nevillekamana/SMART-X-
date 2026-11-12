@@ -21,6 +21,7 @@ builder.Services.AddSingleton<DeploymentValidationService>();
 builder.Services.AddScoped<FileUploadService>();
 
 // ── Part 2: real-time command stream ──
+builder.Services.AddSingleton<SmartX.Services.Mesh.TelemetryHistoryIndex>();   // AVL history archive (final PoE)
 builder.Services.AddSingleton<DeviceRegistry>();       // Dictionary + SortedDictionary
 builder.Services.AddSingleton<PredictiveEngine>();     // transition model, forecasts, risk heap
 builder.Services.AddSingleton<IngestionPipeline>();    // Queue, PriorityQueue, HashSet

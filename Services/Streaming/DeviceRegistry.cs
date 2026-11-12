@@ -1,5 +1,6 @@
 using SmartX.Models;
 using SmartX.Models.Streaming;
+using SmartX.Services.Mesh;
 
 namespace SmartX.Services.Streaming;
 
@@ -17,9 +18,12 @@ public class DeviceRegistry
     private const int MaxRecent = 30;
 
     private readonly object _gate = new();
+    private readonly TelemetryHistoryIndex _historyIndex;     // final PoE: AVL archive, fed on every accepted reading
     private readonly Dictionary<string, LiveDevice> _devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SortedDictionary<long, ReadingPoint>> _history = new(StringComparer.OrdinalIgnoreCase);
     private int _syncedSensorCount = -1;
+
+    public DeviceRegistry(TelemetryHistoryIndex historyIndex) { _historyIndex = historyIndex; }
 
     private sealed class LiveDevice
     {
@@ -141,6 +145,7 @@ public class DeviceRegistry
             if (d.Recent.Count > MaxRecent) d.Recent.RemoveAt(0);
 
             AddToHistory(mac, point);
+            _historyIndex.Add(mac, point);                       // AVL archive (range-queryable)
             return ToView(d);
         }
     }
@@ -175,7 +180,8 @@ public class DeviceRegistry
     public int HistoryCount(string mac) { lock (_gate) return _history.TryGetValue(mac, out var h) ? h.Count : 0; }
 
     /// <summary>Back-fill history before the first live packet (demo seeding). Does not mark the device as seen.</summary>
-    public void SeedHistory(string mac, IEnumerable<ReadingPoint> points)
+    /// <param name="updateLive">false for long back-fills: archive only, leave the device's live "recent" window untouched.</param>
+    public void SeedHistory(string mac, IEnumerable<ReadingPoint> points, bool updateLive = true)
     {
         lock (_gate)
         {
@@ -183,6 +189,8 @@ public class DeviceRegistry
             foreach (var p in points)
             {
                 AddToHistory(mac, p);
+                _historyIndex.Add(mac, p);                       // AVL archive
+                if (!updateLive) continue;
                 d.Recent.Add(p);
                 if (d.Recent.Count > MaxRecent) d.Recent.RemoveAt(0);
                 d.LastValue = p.Value;
