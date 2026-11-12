@@ -30,10 +30,15 @@ public record OperatorEvent(DateTime Time, EventKind Kind, string Subject, strin
 ///     its critical threshold, so the operator is warned before the alert actually fires.
 ///  4. RISK RANKING. A bounded min-heap (PriorityQueue of size K) keeps the K riskiest devices in O(n log K).
 /// A z-score check on the newest reading adds "unusual spike" insights.
+///
+/// Data structures: Queue&lt;OperatorEvent&gt; ×2 (200-event query history + 3-event look-back window), Dictionary (transition
+/// graph), PriorityQueue (lookahead + risk heap), HashSet. Suggestions are generated asynchronously (Task.Run + Task.WhenAll).
 /// </summary>
 public class PredictiveEngine
 {
     private const int MaxLookback = 3;
+    /// <summary>How many operator events the query-history Queue&lt;T&gt; keeps before it dequeues the oldest.</summary>
+    public const int QueryHistoryCapacity = 200;
     private const int MaxDepth = 3;
     private const int MinSupport = 2;
     private const double MinConfidence = 0.25;
@@ -47,7 +52,13 @@ public class PredictiveEngine
     private readonly Dictionary<string, Dictionary<string, Edge>> _next = new();   // token → (next token → edge)
     private readonly Dictionary<string, int> _tokenCount = new();                   // token → times it occurred
     private readonly Dictionary<string, int> _searchCounts = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<OperatorEvent> _recent = new();                           // last MaxLookback events
+
+    // Two explicit bounded FIFO queues (enqueue newest, dequeue oldest once full):
+    //  • _queryHistory — the operator's last 200 events (alerts, searches, commands), for the history view
+    //  • _window       — the 3-event look-back the Markov model links each new event to
+    private readonly Queue<OperatorEvent> _queryHistory = new(QueryHistoryCapacity + 1);
+    private readonly Queue<OperatorEvent> _window = new(MaxLookback + 1);
+    private OperatorEvent? _lastEvent;
     private int _eventCount;
     private int _seededEvents;
 
@@ -78,19 +89,44 @@ public class PredictiveEngine
 
             _tokenCount[e.Token] = _tokenCount.GetValueOrDefault(e.Token) + 1;
 
+            // Walk the look-back window newest → oldest. Queue<T> enumerates oldest → newest, so reverse a tiny array (≤3).
             var counted = new HashSet<string>();          // each earlier token links to this event at most once
-            for (int k = 0; k < _recent.Count; k++)
+            var lookback = _window.ToArray();
+            for (int k = lookback.Length - 1; k >= 0; k--)
             {
-                var prev = _recent[_recent.Count - 1 - k];
+                var prev = lookback[k];
                 var dt = e.Time - prev.Time;
                 if (dt <= TimeSpan.Zero || dt > Window) break;
                 if (prev.Token != e.Token && counted.Add(prev.Token)) AddEdge(prev.Token, e.Token);
             }
 
-            _recent.Add(e);
-            if (_recent.Count > MaxLookback) _recent.RemoveAt(0);
+            EnqueueBounded(_window, e, MaxLookback);
+            EnqueueBounded(_queryHistory, e, QueryHistoryCapacity);
+            _lastEvent = e;
         }
     }
+
+    /// <summary>FIFO with a ceiling: Enqueue the newest event, and Dequeue the oldest when the queue is over capacity.</summary>
+    private static void EnqueueBounded(Queue<OperatorEvent> queue, OperatorEvent e, int capacity)
+    {
+        queue.Enqueue(e);
+        while (queue.Count > capacity) queue.Dequeue();
+    }
+
+    /// <summary>The most recent operator events, newest first, read from the bounded query-history queue.</summary>
+    public List<OperatorEvent> RecentQueries(int take)
+    {
+        lock (_gate)
+        {
+            take = Math.Clamp(take, 1, QueryHistoryCapacity);
+            var all = _queryHistory.ToArray();                       // oldest → newest
+            var result = new List<OperatorEvent>(Math.Min(take, all.Length));
+            for (int i = all.Length - 1; i >= 0 && result.Count < take; i--) result.Add(all[i]);
+            return result;
+        }
+    }
+
+    public (int Depth, int Capacity) QueryHistoryStats() { lock (_gate) return (_queryHistory.Count, QueryHistoryCapacity); }
 
     private void AddEdge(string from, string to)
     {
@@ -100,31 +136,64 @@ public class PredictiveEngine
     }
 
     // ═══ Insights ═══════════════════════════════════════════════════
-    public InsightsResult GetInsights(IReadOnlyList<AlertRecord> activeAlerts)
+    private sealed record SuggestionHalf(List<SuggestedAction> Suggested, List<FrequentSearch> Frequent, object Model);
+    private sealed record AnalysisHalf(List<Insight> Insights, List<DeviceRisk> AtRisk);
+
+    /// <summary>
+    /// Builds the dashboard insights asynchronously. One registry snapshot is taken, then two independent halves run
+    /// in parallel on the thread pool and are awaited with Task.WhenAll:
+    ///   A) BuildSuggestions — Markov transition model + best-first lookahead (reads the model under its lock)
+    ///   B) AnalyseDevices   — trend forecast, z-score anomaly and the bounded risk heap (reads only the snapshot)
+    /// The cancellation token is checked between items so an abandoned request stops doing work.
+    /// Learning (Record*) stays synchronous — it is a few dictionary updates and must keep its event order.
+    /// </summary>
+    public async Task<InsightsResult> GetInsightsAsync(IReadOnlyList<AlertRecord> activeAlerts, CancellationToken ct = default)
     {
-        var devices = _registry.Snapshot();
+        ct.ThrowIfCancellationRequested();
+        var devices = _registry.Snapshot();                       // single snapshot shared by both halves
+
+        var suggestionsTask = Task.Run(() => BuildSuggestions(activeAlerts, devices, ct), ct);
+        var analysisTask = Task.Run(() => AnalyseDevices(activeAlerts, devices, ct), ct);
+        await Task.WhenAll(suggestionsTask, analysisTask);
+
+        ct.ThrowIfCancellationRequested();
+        var a = await suggestionsTask;
+        var b = await analysisTask;
+        return new InsightsResult        // merge
+        {
+            SuggestedActions = a.Suggested,
+            FrequentSearches = a.Frequent,
+            Model = a.Model,
+            Insights = b.Insights,
+            AtRisk = b.AtRisk
+        };
+    }
+
+    private SuggestionHalf BuildSuggestions(IReadOnlyList<AlertRecord> activeAlerts, List<DeviceView> devices, CancellationToken ct)
+    {
         var byName = new Dictionary<string, DeviceView>(StringComparer.OrdinalIgnoreCase);
         foreach (var d in devices) byName.TryAdd(d.Name, d);
 
-        var result = new InsightsResult();
-        var activeKeys = new HashSet<string>(activeAlerts.Select(a => a.Key), StringComparer.OrdinalIgnoreCase);
-
-        // ── 1 + 2: sequence model → suggested actions ──
         var suggestions = new Dictionary<string, SuggestedAction>();
+        object model;
+        List<FrequentSearch> frequent;
         lock (_gate)
         {
             var triggers = new List<(string Token, string Label)>();
             foreach (var a in activeAlerts)
                 triggers.Add(($"ALERT|{a.Type}|{a.DeviceName}", $"{a.DeviceName}: {AlertRules.Humanise(a.Type)}"));
 
-            var last = _recent.Count > 0 ? _recent[^1] : null;
+            var last = _lastEvent;
             if (last is not null && DateTime.UtcNow - last.Time <= Window)
                 triggers.Add((last.Token, DescribeEvent(last)));
 
             foreach (var (token, label) in triggers)
+            {
+                ct.ThrowIfCancellationRequested();
                 Expand(token, label, byName, suggestions);
+            }
 
-            result.Model = new
+            model = new
             {
                 events = _eventCount,
                 seededEvents = _seededEvents,
@@ -132,37 +201,45 @@ public class PredictiveEngine
                 states = _next.Count,
                 windowMinutes = (int)Window.TotalMinutes,
                 lookback = MaxLookback,
-                minSupport = MinSupport
+                minSupport = MinSupport,
+                queryHistoryDepth = _queryHistory.Count,
+                queryHistoryCapacity = QueryHistoryCapacity
             };
 
-            result.FrequentSearches = _searchCounts
+            frequent = _searchCounts
                 .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
                 .Take(4).Select(kv => new FrequentSearch(kv.Key, kv.Value)).ToList();
         }
-        result.SuggestedActions = suggestions.Values.OrderByDescending(s => s.Confidence).Take(5).ToList();
+        var top = suggestions.Values.OrderByDescending(s => s.Confidence).Take(5).ToList();
+        return new SuggestionHalf(top, frequent, model);
+    }
 
-        // ── 3 + 4: forecasts, anomalies, risk ranking ──
+    private AnalysisHalf AnalyseDevices(IReadOnlyList<AlertRecord> activeAlerts, List<DeviceView> devices, CancellationToken ct)
+    {
+        var insights = new List<Insight>();
+        var activeKeys = new HashSet<string>(activeAlerts.Select(a => a.Key), StringComparer.OrdinalIgnoreCase);
         var heap = new PriorityQueue<DeviceRisk, double>();     // min-heap: smallest score at the root
         const int topK = 5;
 
         foreach (var d in devices)
         {
+            ct.ThrowIfCancellationRequested();                   // checked between items
             double score = 0;
             var why = new List<string>();
             var mine = activeAlerts.Where(a => a.Mac.Equals(d.Mac, StringComparison.OrdinalIgnoreCase)).ToList();
             foreach (var a in mine)
             {
-                if (a.Severity == "Critical") { score += 50; why.Add(AlertRules.Humanise(a.Type)); }
-                else { score += 15; why.Add(AlertRules.Humanise(a.Type)); }
+                score += a.Severity == "Critical" ? 50 : 15;
+                why.Add(AlertRules.Humanise(a.Type));
             }
 
             if (!d.Category.Equals("Actuator", StringComparison.OrdinalIgnoreCase))
             {
                 var breach = PredictBreach(d, activeKeys);
-                if (breach is not null) { result.Insights.Add(breach); score += 25; why.Add("trending to threshold"); }
+                if (breach is not null) { insights.Add(breach); score += 25; why.Add("trending to threshold"); }
 
                 var anomaly = DetectAnomaly(d, mine.Count > 0);
-                if (anomaly is not null) { result.Insights.Add(anomaly); score += 15; why.Add("unusual spike"); }
+                if (anomaly is not null) { insights.Add(anomaly); score += 15; why.Add("unusual spike"); }
             }
 
             if (d.Signal is int sig && sig < -75)            // early warning before the -80 dBm alert fires
@@ -178,10 +255,11 @@ public class PredictiveEngine
             }
         }
 
-        while (heap.Count > 0) result.AtRisk.Add(heap.Dequeue());
-        result.AtRisk.Reverse();                               // riskiest first
-        result.Insights = result.Insights.OrderByDescending(i => i.Severity == "critical" ? 2 : 1).ThenByDescending(i => i.Confidence).ToList();
-        return result;
+        var atRisk = new List<DeviceRisk>();
+        while (heap.Count > 0) atRisk.Add(heap.Dequeue());
+        atRisk.Reverse();                                      // riskiest first
+        insights = insights.OrderByDescending(i => i.Severity == "critical" ? 2 : 1).ThenByDescending(i => i.Confidence).ToList();
+        return new AnalysisHalf(insights, atRisk);
     }
 
     // ─── Best-first lookahead over the transition graph ─────────────
