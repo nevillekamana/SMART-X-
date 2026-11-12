@@ -332,6 +332,8 @@ Start the API fresh (`dotnet run`), then run the suites **in this order** agains
 ./scripts/test-part3.sh                     # 116 checks: topology, failover, AVL, benchmarks, guards, Part 2 feedback fixes
 ```
 
+`./scripts/run-all-tests.sh` does all of this for you: it starts a fresh API, runs the three suites in order and stops the API.
+
 Each takes the base URL as an optional argument (default `http://localhost:59185`). Real outputs are in `TEST_RESULTS_PART3.md`.
 
 ### Manual checks (Part 1)
