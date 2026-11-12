@@ -6,6 +6,7 @@
     <title>SMART-X Gateway Dashboard</title>
     <link rel="stylesheet" href="/css/dashboard.css">
     <link rel="stylesheet" href="/css/command-stream.css">
+    <link rel="stylesheet" href="/css/mesh.css">
 </head>
 <body>
 
@@ -29,11 +30,11 @@
                 <p>Watch the live device stream, override actuators with one-tap undo, and get predictive suggestions.</p>
                 <span class="badge active">ACTIVE — Part 2</span>
             </div>
-            <div class="pillar-card disabled">
+            <div class="pillar-card active" onclick="activatePillar('mesh')" tabindex="0" role="button" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activatePillar('mesh')}">
                 <div class="pillar-icon"></div>
                 <h2>Network Topology &amp; Mesh Routing</h2>
-                <p>Visualize mesh network topology, routing paths, and node health.</p>
-                <span class="badge disabled">DISABLED — Final PoE</span>
+                <p>See the mesh, trace each node's cheapest route to the gateway, watch it heal around failures, and query history.</p>
+                <span class="badge active">ACTIVE — Final PoE</span>
             </div>
         </div>
     </div>
@@ -58,8 +59,9 @@
                     <span>Real-Time Command Stream</span><span class="mod-tag">Part 2</span>
                     <span class="mod-alert hidden" id="mod-alert-badge" title="Critical alerts">0</span>
                 </button>
-                <button class="module-btn" disabled title="Implemented in the final PoE">
+                <button class="module-btn" data-module="mesh" onclick="navigate('mesh')">
                     <span>Network Topology &amp; Mesh Routing</span><span class="mod-tag">Final PoE</span>
+                    <span class="mod-alert hidden" id="mod-mesh-badge" title="Nodes down or cut off">0</span>
                 </button>
             </div>
 
@@ -76,6 +78,12 @@
                 <button class="cs-nav-btn active" data-tab="live" onclick="navigate('commands','live')">Live stream</button>
                 <button class="cs-nav-btn" data-tab="commands" onclick="navigate('commands','commands')">Commands &amp; history</button>
                 <button class="cs-nav-btn" data-tab="pipeline" onclick="navigate('commands','pipeline')">Pipeline monitor</button>
+            </nav>
+
+            <nav class="side-nav hidden" id="nav-mesh">
+                <button class="cs-nav-btn" data-tab="topology" onclick="navigate('mesh','topology')">Topology</button>
+                <button class="cs-nav-btn" data-tab="routes" onclick="navigate('mesh','routes')">Routes</button>
+                <button class="cs-nav-btn" data-tab="history" onclick="navigate('mesh','history')">History</button>
             </nav>
 
             <div class="sidebar-footer">
@@ -712,6 +720,144 @@
                 </div>
             </section>
 
+
+            <!-- ═══════════════ FINAL POE — NETWORK TOPOLOGY & MESH ROUTING ═══════════════ -->
+
+            <!-- ── Topology ── -->
+            <section id="tab-mesh-topology" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Mesh</div>
+                        <h1>Network topology</h1>
+                        <div class="page-desc">Bold links are the minimum spanning tree: the most power-efficient way for every node to reach the gateway.</div>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn-secondary" data-mesh="restore">Restore all nodes</button>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="mesh-kpis" id="mesh-kpis" aria-live="polite"></div>
+                    <div class="mesh-grid">
+                        <div class="card mesh-map-card">
+                            <div class="card-head">
+                                <h2>Mesh map</h2>
+                                <div class="mesh-controls">
+                                    <label class="mesh-ctl">Algorithm
+                                        <select id="mesh-algo" data-mesh="algo"><option value="prim">Prim (PriorityQueue)</option><option value="kruskal">Kruskal (union-find)</option></select>
+                                    </label>
+                                    <label class="mesh-ctl"><input type="checkbox" id="mesh-show-tree" data-mesh="show-tree" checked> Show tree</label>
+                                </div>
+                            </div>
+                            <div class="mesh-legend" aria-hidden="true">
+                                <span><i class="dot up"></i>Up</span><span><i class="dot down"></i>Down</span><span><i class="dot isolated"></i>Cut off</span><span><i class="dot unlinked"></i>Unlinked</span><span><i class="dot spof"></i>Single point of failure</span>
+                            </div>
+                            <div class="mesh-map-wrap"><svg id="mesh-map" class="mesh-svg" viewBox="0 0 900 590" role="group" aria-label="Mesh network map"></svg></div>
+                            <div class="mesh-tree-note" id="mesh-tree-note"></div>
+                        </div>
+                        <div class="mesh-side">
+                            <div class="card" id="mesh-inspector"><div class="empty-note">Select a node on the map to inspect it.</div></div>
+                            <div class="card">
+                                <div class="card-head"><h2>Connectivity</h2><span class="card-meta">BFS · DFS · Tarjan</span></div>
+                                <div id="mesh-connectivity"><div class="empty-note">Loading…</div></div>
+                            </div>
+                            <div class="card">
+                                <div class="card-head"><h2>Add a link</h2></div>
+                                <div class="mesh-form">
+                                    <label>Node A <input id="mesh-link-a" list="mesh-node-list" placeholder="MAC, name or gateway"></label>
+                                    <label>Node B <input id="mesh-link-b" list="mesh-node-list" placeholder="MAC, name or gateway"></label>
+                                    <label>RSSI (dBm, −100…−30) <input id="mesh-link-rssi" type="number" value="-65" min="-100" max="-30"></label>
+                                    <button class="btn-primary" data-mesh="add-link">Add link</button>
+                                    <div class="field-hint" id="mesh-link-msg" role="status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Routes ── -->
+            <section id="tab-mesh-routes" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Mesh</div>
+                        <h1>Route tracker</h1>
+                        <div class="page-desc">Compare how three strategies reach the gateway, and see how the route changed after an outage.</div>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="card">
+                        <div class="mesh-form row">
+                            <label class="grow">Node (MAC, sensor id, name or “gateway”)
+                                <input id="mesh-route-input" list="mesh-node-list" placeholder="e.g. Pump B or A4:CF:12:00:00:09" autocomplete="off">
+                            </label>
+                            <button class="btn-primary" data-mesh="track">Track route</button>
+                        </div>
+                        <div class="chip-row mesh-chips" id="mesh-route-chips"></div>
+                        <div class="field-hint" id="mesh-route-msg" role="status"></div>
+                    </div>
+                    <div class="mesh-grid" id="mesh-route-result">
+                        <div class="card">
+                            <div class="card-head"><h2>Strategies</h2><span class="card-meta">lowest power cost is marked ★</span></div>
+                            <div class="mesh-table-wrap"><table class="data-table" id="mesh-route-table"><thead><tr><th>Strategy</th><th>Path</th><th>Hops</th><th>Power cost</th></tr></thead><tbody><tr><td colspan="4" class="empty-note">Pick a node above.</td></tr></tbody></table></div>
+                            <div class="mesh-note" id="mesh-failover-note" role="status"></div>
+                        </div>
+                        <div class="card mesh-map-card">
+                            <div class="card-head"><h2>Path on the map</h2><span class="card-meta"><b class="key tree">tree path</b> <b class="key dij">Dijkstra (if different)</b></span></div>
+                            <div class="mesh-map-wrap"><svg id="mesh-map-route" class="mesh-svg" viewBox="0 0 900 590" role="img" aria-label="Selected route highlighted on the mesh map"></svg></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── History ── -->
+            <section id="tab-mesh-history" class="tab-panel">
+                <header class="topbar">
+                    <div class="topbar-text">
+                        <div class="breadcrumb">SMART-X Gateway / Mesh</div>
+                        <h1>Telemetry history</h1>
+                        <div class="page-desc">Range queries run on a self-balancing AVL tree per sensor, so only the matching window is walked.</div>
+                    </div>
+                </header>
+                <div class="page-content">
+                    <div class="card">
+                        <div class="mesh-form row wrap">
+                            <label>Sensor <select id="mesh-hist-node"></select></label>
+                            <label>From <input type="datetime-local" id="mesh-hist-from"></label>
+                            <label>To <input type="datetime-local" id="mesh-hist-to"></label>
+                            <button class="btn-primary" data-mesh="hist-run">Query</button>
+                        </div>
+                        <div class="chip-row mesh-chips" id="mesh-hist-presets">
+                            <button class="chip-btn" data-mesh="preset" data-minutes="30">Last 30 min</button>
+                            <button class="chip-btn" data-mesh="preset" data-minutes="120">Last 2 h</button>
+                            <button class="chip-btn" data-mesh="preset" data-minutes="360">Last 6 h</button>
+                            <button class="chip-btn" data-mesh="preset" data-minutes="1440">Last 24 h</button>
+                        </div>
+                        <div class="mesh-strip" id="mesh-hist-strip" role="status">Run a query to see how many tree nodes were visited.</div>
+                    </div>
+                    <div class="mesh-grid">
+                        <div class="card">
+                            <div class="card-head"><h2 id="mesh-hist-title">Chart</h2><span class="card-meta" id="mesh-hist-stats"></span></div>
+                            <div class="mesh-chart-wrap"><svg id="mesh-hist-chart" class="mesh-svg chart" viewBox="0 0 720 260" role="img" aria-label="Telemetry history chart"></svg></div>
+                        </div>
+                        <div class="card">
+                            <div class="card-head"><h2>Log</h2><span class="card-meta">newest first</span></div>
+                            <div class="mesh-table-wrap"><table class="data-table" id="mesh-hist-table"><thead><tr><th>Time (local)</th><th>Value</th><th>Signal</th></tr></thead><tbody></tbody></table></div>
+                            <div class="mesh-pager"><button class="btn-secondary" data-mesh="page-prev">‹ Prev</button><span id="mesh-hist-page">—</span><button class="btn-secondary" data-mesh="page-next">Next ›</button></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head"><h2>Benchmarks</h2><span class="card-meta">measured live on this machine</span></div>
+                        <div class="mesh-form row wrap">
+                            <button class="btn-secondary" data-mesh="bench-tree">AVL vs linear scan</button>
+                            <button class="btn-secondary" data-mesh="bench-graph">Graph algorithms</button>
+                        </div>
+                        <div id="mesh-bench-out" class="mesh-table-wrap"></div>
+                    </div>
+                </div>
+            </section>
+
+            <datalist id="mesh-node-list"></datalist>
+
         </main>
     </div>
 
@@ -720,5 +866,6 @@
 
     <script src="/js/dashboard.js"></script>
     <script src="/js/commandStream.js"></script>
+    <script src="/js/mesh.js"></script>
 </body>
 </html>

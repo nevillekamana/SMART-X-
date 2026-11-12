@@ -27,20 +27,26 @@ let pulseTimeout = null;
 // the running device simulator, caches) survives every switch.
 const MODULES = {
     telemetry: { label: 'Sensor Ingestion & Telemetry', defaultTab: 'overview' },
-    commands:  { label: 'Real-Time Command Stream',     defaultTab: 'live' }
+    commands:  { label: 'Real-Time Command Stream',     defaultTab: 'live' },
+    mesh:      { label: 'Network Topology & Mesh Routing', defaultTab: 'topology' }
 };
 const lastTabByModule = {};
 let activeModule = null;
 
 function activatePillar(pillar) {
-    if (!MODULES[pillar]) return; // the Network Topology pillar is implemented in the final PoE
+    if (!MODULES[pillar]) return;
     document.getElementById('startup-screen').classList.add('hidden');
     document.getElementById('app-shell').classList.remove('hidden');
     navigate(pillar);
 }
 
+function hideModule(m) {
+    if (m === 'commands' && window.CS) window.CS.onHide();
+    if (m === 'mesh' && window.MESH) window.MESH.onHide();
+}
+
 function showStartup() {
-    if (activeModule === 'commands' && window.CS) window.CS.onHide();
+    hideModule(activeModule);
     activeModule = null;
     document.getElementById('app-shell').classList.add('hidden');
     document.getElementById('startup-screen').classList.remove('hidden');
@@ -96,24 +102,29 @@ function showStartup() {
 // Part 1 tabs keep their original entry point.
 function switchTab(tabName) { navigate('telemetry', tabName); }
 
-function panelIdFor(module, tab) { return module === 'commands' ? `tab-cs-${tab}` : `tab-${tab}`; }
+function panelIdFor(module, tab) {
+    if (module === 'commands') return `tab-cs-${tab}`;
+    if (module === 'mesh') return `tab-mesh-${tab}`;
+    return `tab-${tab}`;
+}
 
 function navigate(module, tab, { fromHash = false } = {}) {
     if (!MODULES[module]) module = 'telemetry';
-    const known = Array.from(document.querySelectorAll(module === 'commands' ? '#nav-commands button' : '#nav-telemetry button'))
+    const known = Array.from(document.querySelectorAll(`#nav-${module} button`))
         .map(b => b.dataset.tab);
     if (!tab || !known.includes(tab)) tab = lastTabByModule[module] || MODULES[module].defaultTab;
     lastTabByModule[module] = tab;
 
     const leaving = activeModule && activeModule !== module ? activeModule : null;
-    if (leaving === 'commands' && window.CS) window.CS.onHide();
+    if (leaving) hideModule(leaving);
     activeModule = module;
 
     // module switcher + the nav list that belongs to this module
     document.querySelectorAll('.module-btn[data-module]').forEach(b => b.classList.toggle('active', b.dataset.module === module));
     document.getElementById('nav-telemetry').classList.toggle('hidden', module !== 'telemetry');
     document.getElementById('nav-commands').classList.toggle('hidden', module !== 'commands');
-    document.querySelectorAll('#nav-telemetry button, #nav-commands button')
+    document.getElementById('nav-mesh').classList.toggle('hidden', module !== 'mesh');
+    document.querySelectorAll('#nav-telemetry button, #nav-commands button, #nav-mesh button')
         .forEach(b => b.classList.toggle('active', b.dataset.tab === tab && b.closest('nav').id === `nav-${module}`));
 
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -124,6 +135,7 @@ function navigate(module, tab, { fromHash = false } = {}) {
     try { sessionStorage.setItem('smartx.route', wanted); } catch { /* storage unavailable */ }
 
     if (module === 'commands') { if (window.CS) window.CS.onShow(tab); return; }
+    if (module === 'mesh') { if (window.MESH) window.MESH.onShow(tab); return; }
     showTelemetryTab(tab);
 }
 
