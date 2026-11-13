@@ -34,7 +34,12 @@ const lastTabByModule = {};
 let activeModule = null;
 
 function activatePillar(pillar) {
-    if (!MODULES[pillar]) return;
+    if (!MODULES[pillar]) {
+        // Fail loudly instead of silently – indicate stale cache or missing module
+        console.error(`Module '${pillar}' is not loaded. Dashboard may be out of date. Try: Ctrl+F5 (hard refresh) or clear browser cache.`);
+        showToast(`Dashboard script is out of date — hard refresh (Ctrl+F5)`, 'error', 8000);
+        return;
+    }
     document.getElementById('startup-screen').classList.add('hidden');
     document.getElementById('app-shell').classList.remove('hidden');
     navigate(pillar);
