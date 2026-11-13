@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using SmartX.Endpoints;
 using SmartX.Models;
 using SmartX.Services;
+using SmartX.Services.Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +19,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<DeploymentValidationService>();
 builder.Services.AddScoped<FileUploadService>();
+
+// ── Part 2: real-time command stream ──
+builder.Services.AddSingleton<SmartX.Services.Mesh.TelemetryHistoryIndex>();   // AVL history archive (final PoE)
+builder.Services.AddSingleton<DeviceRegistry>();       // Dictionary + SortedDictionary
+builder.Services.AddSingleton<PredictiveEngine>();     // transition model, forecasts, risk heap
+builder.Services.AddSingleton<IngestionPipeline>();    // Queue, PriorityQueue, HashSet
+builder.Services.AddSingleton<CommandService>();
+builder.Services.AddSingleton<SmartX.Services.Mesh.MeshNetwork>();   // graph, BFS/DFS, Prim/Kruskal (final PoE)       // Stack (undo)
+builder.Services.AddHostedService<DeviceSeeder>();     // demo fleet + history
+builder.Services.AddHostedService<StreamProcessor>();  // drains the queues
 
 // Add Swagger for API documentation
 builder.Services.AddEndpointsApiExplorer();
@@ -50,7 +62,12 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Smart-X API
 
 // Serve static files (dashboard)
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// The dashboard is plain HTML/JS/CSS that changes between parts: make browsers revalidate on every load
+// (cheap, ETag-based) so an old cached index.html can never keep showing the third pillar as disabled.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 // ══════════════════════════════════════════════════════════
 //  API ENDPOINTS
@@ -363,9 +380,16 @@ deployment.MapGet("/find/{name}", (string name, DeploymentValidationService dsvc
     return node is not null ? Results.Ok(node) : Results.NotFound(new { error = $"Node '{name}' not found" });
 });
 
+// ── Part 2: /api/stream/* ──
+app.MapStreamEndpoints();
+app.MapMeshEndpoints();      // final PoE: /api/mesh/*
+
 // ── Dashboard Fallback ─────────────────────────────────
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 app.Run();
 

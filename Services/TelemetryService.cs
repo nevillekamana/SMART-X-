@@ -13,6 +13,10 @@ namespace SmartX.Services;
 /// </summary>
 public class TelemetryService
 {
+    // Part 2: the streaming pipeline writes to this service from a background thread while
+    // Kestrel request threads read it, so every public member takes this lock.
+    private readonly object _lock = new();
+
     // ─── Jagged array storage for raw historical telemetry batches ───
     // Each inner double[] is a batch of readings; outer array holds sequential batches
     private double[][] _rawBatches = Array.Empty<double[]>();
@@ -70,6 +74,8 @@ public class TelemetryService
     // ─── Advanced Arrays: Add a batch using jagged arrays ───
     public void AddRawBatch(double[] readings)
     {
+      lock (_lock)
+      {
         // Expand jagged array if needed
         if (_rawBatches.Length == 0 || _batchIndex >= _rawBatches.Length)
         {
@@ -87,11 +93,14 @@ public class TelemetryService
         {
             AddToConsolidatedHistory(val);
         }
+      }
     }
 
     // ─── Transfer all raw batches into List<T> with deduplication ───
     public List<double> ConsolidateAllBatches()
     {
+      lock (_lock)
+      {
         for (int i = 0; i < _batchIndex; i++)
         {
             if (_rawBatches[i] != null)
@@ -105,25 +114,34 @@ public class TelemetryService
             }
         }
         return new List<double>(_consolidatedHistory);
+      }
     }
 
     // ─── Store a generic TelemetryPacket<T> ───
     public void StorePacket<T>(TelemetryPacket<T> packet) where T : struct
     {
-        _packets[packet.SensorId] = packet;
+        lock (_lock) { _packets[packet.SensorId] = packet; }
     }
 
     // ─── Retrieve a generic TelemetryPacket<T> without boxing/unboxing ───
     public TelemetryPacket<T>? GetPacket<T>(string sensorId) where T : struct
     {
-        if (_packets.TryGetValue(sensorId, out var obj) && obj is TelemetryPacket<T> packet)
-            return packet;
-        return null;
+        lock (_lock)
+        {
+            if (_packets.TryGetValue(sensorId, out var obj) && obj is TelemetryPacket<T> packet)
+                return packet;
+            return null;
+        }
     }
 
     // ─── Sensor Registration ───
     // Validates required fields and rejects duplicate MAC addresses before registering.
     public SensorRegistration RegisterSensor(SensorRegistration reg)
+    {
+        lock (_lock) { return RegisterSensorUnsafe(reg); }
+    }
+
+    private SensorRegistration RegisterSensorUnsafe(SensorRegistration reg)
     {
         if (string.IsNullOrWhiteSpace(reg.MacAddress))
             throw new ArgumentException("MAC address / unique identifier is required.");
@@ -158,13 +176,16 @@ public class TelemetryService
         return reg;
     }
 
-    public List<SensorRegistration> GetAllSensors() => _sensors.ToList();
+    public List<SensorRegistration> GetAllSensors() { lock (_lock) { return _sensors.ToList(); } }
+
+    // Part 2: cheap change-detector so the device registry only re-syncs when a sensor was added.
+    public int SensorCount { get { lock (_lock) { return _sensors.Count; } } }
 
     // O(1) — Dictionary<string, SensorRegistration> lookup instead of a linear scan.
-    public SensorRegistration? GetSensor(string id) => _sensorsByKey.TryGetValue(id, out var s) ? s : null;
+    public SensorRegistration? GetSensor(string id) { lock (_lock) { return _sensorsByKey.TryGetValue(id, out var s) ? s : null; } }
 
     // O(1) — same backing dictionary, since MAC and Id are both indexed into it.
-    public SensorRegistration? GetSensorByMac(string mac) => _sensorsByKey.TryGetValue(mac, out var s) ? s : null;
+    public SensorRegistration? GetSensorByMac(string mac) { lock (_lock) { return _sensorsByKey.TryGetValue(mac, out var s) ? s : null; } }
 
     // ─── Validate Telemetry Type Against Registered Sensor ───
     /// <summary>
@@ -223,6 +244,8 @@ public class TelemetryService
     }
     public void AddSensorData(SensorData data)
     {
+      lock (_lock)
+      {
         _sensorDataStore.Add(data);
         _latestData[data.SensorId] = data;
 
@@ -238,10 +261,22 @@ public class TelemetryService
             AddRawBatch(_pendingBatchBuffer.ToArray());
             _pendingBatchBuffer.Clear();
         }
+
+        // Part 2: the stream feeds this store continuously, so keep it bounded.
+        if (_sensorDataStore.Count > MaxStoredReadings)
+            _sensorDataStore.RemoveRange(0, _sensorDataStore.Count - MaxStoredReadings);
+      }
     }
+
+    private const int MaxStoredReadings = 5000;
 
     // ─── Aggregate two sensors using operator overloading ───
     public SensorData AggregateSensors(string id1, string id2)
+    {
+        lock (_lock) { return AggregateSensorsUnsafe(id1, id2); }
+    }
+
+    private SensorData AggregateSensorsUnsafe(string id1, string id2)
     {
         ValidateSensorIdsProvided(id1, id2);
         if (!_latestData.TryGetValue(id1, out var a))
@@ -256,6 +291,11 @@ public class TelemetryService
     // ─── Delta comparison using operator overloading ───
     public SensorData DeltaSensors(string id1, string id2)
     {
+        lock (_lock) { return DeltaSensorsUnsafe(id1, id2); }
+    }
+
+    private SensorData DeltaSensorsUnsafe(string id1, string id2)
+    {
         ValidateSensorIdsProvided(id1, id2);
         if (!_latestData.TryGetValue(id1, out var a))
             throw new KeyNotFoundException($"Sensor {id1} not found.");
@@ -268,6 +308,11 @@ public class TelemetryService
 
     // ─── Compare sensors using overloaded comparison operators ───
     public string CompareSensors(string id1, string id2)
+    {
+        lock (_lock) { return CompareSensorsUnsafe(id1, id2); }
+    }
+
+    private string CompareSensorsUnsafe(string id1, string id2)
     {
         ValidateSensorIdsProvided(id1, id2);
         if (!_latestData.TryGetValue(id1, out var a))
@@ -288,6 +333,11 @@ public class TelemetryService
     // Runs entirely against O(1) dictionary lookups (_latestData, _sensorsByKey) —
     // no linear scan of telemetry history is required per sensor.
     public List<AttentionItem> GetNeedsAttention()
+    {
+        lock (_lock) { return GetNeedsAttentionUnsafe(); }
+    }
+
+    private List<AttentionItem> GetNeedsAttentionUnsafe()
     {
         var items = new List<AttentionItem>();
         var now = DateTime.UtcNow;
@@ -345,14 +395,16 @@ public class TelemetryService
     }
 
     // ─── Get telemetry history (from consolidated List<T>) ───
-    public List<double> GetHistory() => new(_consolidatedHistory);
+    public List<double> GetHistory() { lock (_lock) { return new(_consolidatedHistory); } }
 
     // ─── Get all sensor data ───
-    public List<SensorData> GetAllSensorData() => _sensorDataStore.ToList();
+    public List<SensorData> GetAllSensorData() { lock (_lock) { return _sensorDataStore.ToList(); } }
 
     // ─── Get raw batch info ───
     public (int BatchCount, int TotalReadings, double[][] RawBatches) GetBatchInfo()
-        => (_batchIndex, _consolidatedHistory.Count, _rawBatches);
+    {
+        lock (_lock) { return (_batchIndex, _consolidatedHistory.Count, _rawBatches); }
+    }
 
     // ─── Simulate telemetry generation ───
     public void SimulateTelemetry()
