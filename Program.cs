@@ -62,7 +62,12 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Smart-X API
 
 // Serve static files (dashboard)
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// The dashboard is plain HTML/JS/CSS that changes between parts: make browsers revalidate on every load
+// (cheap, ETag-based) so an old cached index.html can never keep showing the third pillar as disabled.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 // ══════════════════════════════════════════════════════════
 //  API ENDPOINTS
@@ -381,7 +386,10 @@ app.MapMeshEndpoints();      // final PoE: /api/mesh/*
 
 // ── Dashboard Fallback ─────────────────────────────────
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 app.Run();
 
