@@ -21,7 +21,7 @@ The main purpose of the project is to work with simulated IoT sensor data. The a
 The dashboard is inside the `wwwroot` folder, so the same ASP.NET Core application serves both the API and the frontend. This means I only need to run one application.
 ## VIDEO LINK
 - Part 1 demo: https://www.youtube.com/watch?v=NkO0CCrsWm8
-- Final PoE demo: _YouTube link to be added here before submission_
+- Final PoE demo: https://youtu.be/FZaUta7NX-g?si=vQKsAUQ7zAVPBf99
 
 ---
 
