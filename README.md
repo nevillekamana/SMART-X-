@@ -1,5 +1,5 @@
-# PROG7312 – Smart-X IoT Gateway (Part 1, Part 2 and Final PoE)
-# Smart-X – Ingestion, Real-Time Command Stream and Mesh Routing
+# Smart-X – IoT Ingestion, Real-Time Command Stream and Mesh Routing
+**PROG7312 (Programming 3B) – Part 1, Part 2 and Final PoE**
 
 Smart-X is an ASP.NET Core 10 Minimal API project with a plain HTML, CSS and JavaScript dashboard (no front-end framework), built up over three parts of PROG7312: Part 1 (sensor ingestion and validation), Part 2 (real-time command stream) and the final PoE (network topology and mesh routing).
 
@@ -19,8 +19,11 @@ The main purpose of the project is to work with simulated IoT sensor data. The a
 | Storage | In-memory collections: `Dictionary`, `SortedDictionary`, `Queue`, `PriorityQueue`, `Stack`, `HashSet`, a hand-written AVL tree and a graph adjacency list |
 
 The dashboard is inside the `wwwroot` folder, so the same ASP.NET Core application serves both the API and the frontend. This means I only need to run one application.
-## VIDEO LINK
+
+## Video demos
+
 - Part 1 demo: https://www.youtube.com/watch?v=NkO0CCrsWm8
+- Part 2: <ADD LINK>
 - Final PoE demo: https://youtu.be/FZaUta7NX-g?si=vQKsAUQ7zAVPBf99
 
 ---
@@ -48,8 +51,8 @@ The version should be `10.x.x`.
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
-cd SmartX/SmartX
+git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
 ```
 
 ### 2. Restore the packages
@@ -565,7 +568,7 @@ In the demo, Fan 1 is the only single point of failure and the connectivity card
 
 **Role.** The MST connects every live node to the gateway using the smallest possible total power cost, which is the “most power-efficient routing” the brief asks for. Each node stores only its **next hop** toward the gateway (`RootTree`), which is what a real mesh node keeps.
 
-*Prim* grows the tree from the gateway with a `PriorityQueue` that always offers the cheapest link leaving the tree. The priority is `(weight, edgeId)` so ties resolve the same way on every run.
+*Prim* grows the tree from the gateway with a `PriorityQueue` that always offers the cheapest link leaving the tree. The priority is `(weight, edgeId)` so ties resolve the same way on every run. .NET's `PriorityQueue` is a binary min-heap with O(log E) extraction and offers O(E log V) total complexity.
 
 ```csharp
 var pq = new PriorityQueue<(MeshEdge Edge, string To), (double, string)>(new EdgeOrder());
@@ -664,13 +667,12 @@ There are a few limitations with the current version:
 - History is capped at 50,000 readings per device and the chart shows at most 240 min/max-decimated points.
 - The UI smoke test uses jsdom, not a real browser, so it checks behaviour and DOM output but not how the page looks.
 - Tests must be run on a freshly started API (see “Testing the Application”).
-- The dashboard is simple and does not have advanced features such as filterin
+- The dashboard is plain HTML/CSS/JavaScript and polls the server every 3 seconds.
+- Uploaded files are validated but stored unencrypted on disk.
 
 
 ---
 
 ## Author
 
-**Neville Kabamba**  
-**ST10404539**  
-**PROG7312 – Part 1**
+Neville Kabamba – ST10404539 – PROG7312 (Parts 1–3)

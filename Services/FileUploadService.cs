@@ -177,7 +177,7 @@ internal class ConcatenatedStream : Stream
         {
             FileName = fileName,
             FilePath = $"/uploads/{sensorId}/{uniqueName}",
-            ContentType = contentType,
+            ContentType = contentType ?? string.Empty,
             FileSize = fileInfo.Length,
             AttachedAt = DateTime.UtcNow
         };
